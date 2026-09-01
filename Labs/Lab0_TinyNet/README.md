@@ -4,6 +4,9 @@
 > 环境：WSL2 或 Visual Studio Developer PowerShell、CMake、支持 C++20 的编译器
 > 目标：亲手实现一个极小但行为清楚的 IP 数据报转发模型。
 
+> [!tip]
+> 如果 C++ 有些生疏，先阅读 [[04a_Lab0所需C++暖身|Lesson 4A：Lab 0 所需的 C++ 暖身]]。它只覆盖本 Lab 会遇到的容器、指针、`optional`、枚举和初始化写法，不包含 TODO 答案。
+
 ## 这次要造什么
 
 我们不会调用真实网卡，也不会使用 Socket。整个网络存在于 C++ 内存里：
