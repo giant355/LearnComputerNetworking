@@ -84,7 +84,7 @@ ReceiveResult Router::receive(Datagram datagram)
     if (queues_[tmp->interface_index].size() >= interface_capacities_[tmp->interface_index])
         return ReceiveResult::queue_full;
 
-    queues_[tmp->interface_index].push_back(OutboundPacket{ routes_[tmp->interface_index].next_hop, datagram });
+    queues_[tmp->interface_index].push_back(OutboundPacket{tmp->next_hop, datagram });
 
     return ReceiveResult::forwarded;
     
