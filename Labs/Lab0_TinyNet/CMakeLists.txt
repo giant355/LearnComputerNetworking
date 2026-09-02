@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
+# 构建脚手架已经准备好。完成 Lab 0 时不需要修改本文件。
 project(tinynet_lab0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
@@ -13,7 +14,8 @@ add_library(tiny_net
 target_include_directories(tiny_net PUBLIC src)
 
 if(MSVC)
-    target_compile_options(tiny_net PRIVATE /W4 /permissive-)
+    # /utf-8 让 MSVC 正确读取源码中的中文教学注释。
+    target_compile_options(tiny_net PRIVATE /W4 /permissive- /utf-8)
 else()
     target_compile_options(tiny_net PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
@@ -25,7 +27,7 @@ add_executable(lab0_tests
 target_link_libraries(lab0_tests PRIVATE tiny_net)
 
 if(MSVC)
-    target_compile_options(lab0_tests PRIVATE /W4 /permissive-)
+    target_compile_options(lab0_tests PRIVATE /W4 /permissive- /utf-8)
 else()
     target_compile_options(lab0_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
