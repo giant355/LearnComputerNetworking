@@ -60,10 +60,12 @@ const Route* Router::find_route(const IPv4Address destination) const
 {
     // TODO 1：只读取 routes_，寻找 destination 完全相等的现有规则。
     // 找到与找不到都是正常结果；不要创建临时 Route 再返回它的地址。
-    for(const Route& r:route_)
+    for(const Route& r:routes_)
     {
         if (r.destination == destination)
-            return *r;
+        {
+            return &r;
+        }
     }
     return nullptr;
 }
@@ -73,15 +75,19 @@ ReceiveResult Router::receive(Datagram datagram)
     // TODO 2：把它看作一条决策流水线：
     // TTL 是否允许转发 → 是否有路由 → 出口队列是否有空间 → 成功入队。
     // 只有成功转发时，TTL 才恰好减少 1，且恰好一个队列增加元素。
-    if (datagram.ttl < 1)
+    if (datagram.ttl <= 1)
         return ReceiveResult::ttl_expired;
+    datagram.ttl--;
     auto tmp = find_route(datagram.destination);
     if (!tmp)
         return ReceiveResult::no_route;
     if (queues_[tmp->interface_index].size() >= interface_capacities_[tmp->interface_index])
         return ReceiveResult::queue_full;
-    return ReceiveResult::forwarded;
 
+    queues_[tmp->interface_index].push_back(OutboundPacket{ routes_[tmp->interface_index].next_hop, datagram });
+
+    return ReceiveResult::forwarded;
+    
 }
 
 std::optional<OutboundPacket> Router::transmit_one(
@@ -90,8 +96,18 @@ std::optional<OutboundPacket> Router::transmit_one(
 {
     // TODO 3：无效索引是程序错误；空队列是正常状态；有数据时按 FIFO 取走队首。
     // “取走”意味着返回元素的同时，它也必须从队列中消失。
-    (void)interface_index;
-    throw std::logic_error("TODO: implement Router::transmit_one");
+    if (interface_index >= queues_.size())
+    {
+        throw std::out_of_range("unknown interface");
+    }   
+    OutboundPacket packet;
+    if (queues_[interface_index].size())
+    {
+        packet = queues_[interface_index].front();
+        queues_[interface_index].pop_front();
+        return packet;
+    }
+    return std::nullopt;
 }
 
 std::size_t Router::queued_count(const std::size_t interface_index) const
