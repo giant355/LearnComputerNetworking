@@ -4,7 +4,7 @@
 >
 > 前置阅读：[[../../09_网络接口状态机|第 9 课：网络接口状态机]] 与 [[../../08_ARP与网络接口|第 8 课：ARP 与网络接口]]
 >
-> 你只需修改：`src/tiny_arp.cc` 与 `LAB1_WRITEUP.md`
+> 你只需修改：`src/tiny_arp.cc`。`LAB1_WRITEUP.md` 是可选笔记，不是交付要求。
 
 ## 这次要造什么
 
@@ -38,7 +38,7 @@ Ethernet 链路 ───── recv_frame(ARP 回复) ┘
 Lab1_TinyARPInterface/
 ├── CMakeLists.txt
 ├── README.md
-├── LAB1_WRITEUP.md
+├── LAB1_WRITEUP.md # 可选：只在你想留下笔记时使用
 ├── src/
 │   ├── tiny_arp.hh   # 数据模型和接口，先读，不修改
 │   └── tiny_arp.cc   # 你要实现的 TODO
@@ -50,7 +50,7 @@ Lab1_TinyARPInterface/
 
 ---
 
-## 0. 编译与第一次运行
+	## 0. 编译与第一次运行
 
 在 **Developer PowerShell for Visual Studio**：
 
@@ -231,15 +231,10 @@ for (auto it = arp_cache_.begin(); it != arp_cache_.end();) {
 
 若第一项失败，先检查 `send_datagram` 是否同时完成“排队”和“首次请求”。若第二项失败，检查是否在学习映射后调用 `flush_waiting_datagrams`。若第四项失败，不要去改交换机逻辑；这里只有主机/路由器接口。
 
-## 7. 完成报告
+## 7. 完成方式：测试与代码就是证据
 
-填写 [LAB1_WRITEUP.md](LAB1_WRITEUP.md)。仍采用精简证据链：测试摘要、三句核心解释、一个真实 bug（若有）、实际用时。
+不要求填写报告。完成时发给我测试输出和 `tiny_arp.cc` 的修改即可；你写在代码中的解释性注释会作为理解证据的一部分。
 
-完成后发给我：
+只有遇到一个以后可能想复看的 bug 时，才任选使用 [LAB1_WRITEUP.md](LAB1_WRITEUP.md) 留下“现象 → 原因 → 修复”。它不是表格任务，也不必记录用时。
 
-1. `ctest` 最终输出；
-2. `LAB1_WRITEUP.md` 的内容；
-3. `tiny_arp.cc` 的修改，或提交号；
-4. 总用时。
-
-我会先检查状态机是否正确，再看你的解释；两者都通过才算 Lab 完成。
+我会检查状态机行为、测试结果和必要的代码注释；通过后就算 Lab 完成。

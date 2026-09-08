@@ -74,26 +74,66 @@ void NetworkInterface::flush_waiting_datagrams(const IpAddress& next_hop)
 
 void NetworkInterface::send_datagram(Datagram datagram, const IpAddress& next_hop)
 {
-    // TODO 阶段 1：缓存命中时直接制作 IPv4 帧。
-    // TODO 阶段 1：缓存未命中时按 next_hop 排队；必要时发一份 ARP 请求。
-    // 同一个 next_hop 在 5 秒内只能发一份请求。
-    (void)datagram;
-    (void)next_hop;
+    //查看arp缓存，进入缓存命中分支
+    if (cache_has_live_entry(next_hop))
+    {
+        auto entry = arp_cache_.find(next_hop);
+        //发送ipv4帧
+        send_ipv4_frame(datagram, entry->second.mac);
+    }
+    else
+    {
+        //没命中缓存，加入待解系队列
+        waiting_[next_hop].push_back(std::move(datagram));
+        auto it = last_arp_request_ms_.find(next_hop);
+        //再次发送请求条件：arp留存时间超时或者在一定间隔后
+        if (it == last_arp_request_ms_.end() || now_ms_ - it->second >= request_suppression_ms)
+        {
+            send_arp_request(next_hop);
+            last_arp_request_ms_[next_hop] = now_ms_;
+        }
+    }
 }
 
 std::optional<Datagram> NetworkInterface::recv_frame(const EthernetFrame& frame)
 {
-    // TODO 阶段 3：先过滤非本机/非广播帧和 FCS 失败帧。
-    // TODO 阶段 3：IPv4 帧返回 datagram；ARP 帧学习发送者映射、冲刷等待队列。
-    // TODO 阶段 4：若 ARP 请求目标是 ip_，制作单播 ARP 回复。
-    (void)frame;
+    //接收帧有两种类型
+    //ethernet头里面的目标mac是询问对象，arp里面的目标mac才是我们真正想找到答案的对象
+    //mac广播检查应该更加底层，不过这个lab忽略了
+    if (frame.destination != mac_ && frame.destination != broadcast_mac) return std::nullopt;
+    if (!frame.fcs_ok) return std::nullopt;
+    if (frame.type == FrameType::ipv4 && frame.datagram)
+    {
+        return frame.datagram;
+    }
+    //只要是arp类型，不管是请求还是回复，都学习，上面ipv4不学习是因为这是主机或路由器网络接口
+    else if ((frame.type == FrameType::arp_request || frame.type == FrameType::arp_reply))
+    {
+        learn_arp_mapping(frame.arp->sender_ip,frame.arp->sender_mac);
+        flush_waiting_datagrams(frame.arp->sender_ip);
+        if(frame.arp->target_ip==ip_&&frame.type==FrameType::arp_request)
+        frames_to_send_.push_back(EthernetFrame{frame.arp->sender_mac,mac_,FrameType::arp_reply,std::nullopt,ArpMessage{
+            .sender_ip = ip_,
+            .sender_mac = mac_,
+            .target_ip = frame.arp->sender_ip,
+        },
+        true });
+
+    }
     return std::nullopt;
 }
 
 void NetworkInterface::tick(const std::uint64_t elapsed_ms)
 {
-    // TODO 阶段 5：推进 now_ms_，删除已经到期的缓存项。
-    (void)elapsed_ms;
+    now_ms_ += elapsed_ms;
+    for (auto it = arp_cache_.begin(); it != arp_cache_.end();) {
+        if (it->second.expires_at_ms <= now_ms_) {
+            it = arp_cache_.erase(it);
+        }
+        else {
+            ++it;
+        }
+    }
 }
 
 std::vector<EthernetFrame> NetworkInterface::take_frames_to_send()
