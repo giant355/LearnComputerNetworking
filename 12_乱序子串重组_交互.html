@@ -60,7 +60,7 @@
   <script>
     const stream = "ABCDEFGHIJ";
     const arrivals = [{ start: 5, data: "FGH", last: false }, { start: 0, data: "ABC", last: false }, { start: 2, data: "DEFG", last: false }, { start: 8, data: "IJ", last: true }];
-    const states = [{ first: 0, pending: [], output: "", eof: null, action: "尚未有片段到达。" }, { first: 0, pending: [{ start: 5, end: 8, text: "FGH" }], output: "", eof: null, action: "到达 [5,8)：位置 0 仍然缺失，先保存 FGH。" }, { first: 3, pending: [{ start: 5, end: 8, text: "FGH" }], output: "ABC", eof: null, action: "到达 [0,3)：先输出 ABC；[3,5) 是空洞，FGH 继续等待。" }, { first: 8, pending: [], output: "ABCDEFGH", eof: null, action: "到达 [2,6)：与已有范围重叠，去重后补齐 DEFG，连续输出到位置 8。" }, { first: 10, pending: [], output: "ABCDEFGHIJ", eof: 10, action: "到达 [8,10) 且标记 EOF：补齐到位置 10，现在才可以关闭输出。" }];
+    const states = [{ first: 0, pending: [], output: "", eof: null, action: "尚未有片段到达。" }, { first: 0, pending: [{ start: 5, end: 8, text: "FGH" }], output: "", eof: null, action: "到达 [5,8)：位置 0 仍然缺失，先保存 FGH。" }, { first: 3, pending: [{ start: 5, end: 8, text: "FGH" }], output: "ABC", eof: null, action: "到达 [0,3)：先输出 ABC；[3,5) 是空洞，FGH 继续等待。" }, { first: 8, pending: [], output: "ABCDEFGH", eof: null, action: "到达 [2,6)：与已有范围重叠，去重后补齐 DEFG，连续输出到位置 8。" }, { first: 10, pending: [], output: "ABCDEFGHIJ", eof: 10, action: "到达 [8,10) 且标记 EOF：补齐到位置 10，现在才可以关闭 A→B 这个方向的接收 ByteStream。" }];
     let current = 0;
     const byId = (id) => document.getElementById(id);
     const interval = (item) => `[${item.start},${item.end}) ${item.text}`;
