@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第 12 课：乱序子串重组器</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; line-height: 1.5; }
+    body { max-width: 920px; margin: 0 auto; padding: 24px; color: CanvasText; background: Canvas; }
+    button { font: inherit; color: inherit; background: transparent; border: 1px solid GrayText; border-radius: 6px; padding: 7px 12px; cursor: pointer; }
+    button:hover { background: Highlight; color: HighlightText; }
+    button:focus-visible { outline: 2px solid Highlight; outline-offset: 2px; }
+    button:disabled { opacity: .45; cursor: default; }
+    .controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 16px 0; }
+    .muted { color: GrayText; }
+    .metrics { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0; }
+    .metric { min-width: 150px; border: 1px solid GrayText; border-radius: 6px; padding: 8px 10px; }
+    .metric small { display: block; color: GrayText; }
+    .metric strong { display: block; font-size: 20px; }
+    .track { overflow-x: auto; }
+    .grid { display: grid; grid-template-columns: 110px repeat(10, minmax(38px, 1fr)); min-width: 560px; }
+    .label { padding: 7px 8px 7px 0; color: GrayText; font-size: 13px; }
+    .cell { min-height: 40px; border-top: 1px solid GrayText; border-left: 1px solid GrayText; padding: 5px 2px; text-align: center; }
+    .cell:last-child { border-right: 1px solid GrayText; }
+    .position { min-height: 22px; color: GrayText; font-size: 12px; }
+    .delivered { background: color-mix(in srgb, #4caf50 24%, transparent); }
+    .pending { background: color-mix(in srgb, #ff9800 26%, transparent); }
+    .gap { background: color-mix(in srgb, #f44336 18%, transparent); }
+    .events { display: flex; flex-wrap: wrap; gap: 8px; }
+    .event { border: 1px solid GrayText; border-radius: 6px; padding: 6px 9px; font-size: 13px; }
+    .current { border-color: #4285f4; box-shadow: 0 0 0 1px #4285f4; }
+    .done { opacity: .65; }
+    .state { margin: 7px 0; }
+    code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  </style>
+</head>
+<body>
+  <h1>第 12 课：数据到了，但顺序乱了</h1>
+  <p>按步骤让片段到达，观察 Reassembler 如何暂存空洞、处理重叠，并把连续前缀写入接收端 ByteStream。</p>
+  <div class="controls">
+    <button id="reset" type="button">重置</button>
+    <button id="next" type="button">到达下一片段</button>
+    <span id="step" class="muted" aria-live="polite">步骤 0 / 4</span>
+  </div>
+  <div class="metrics" aria-label="当前状态">
+    <div class="metric"><small>first_unassembled</small><strong id="first">0</strong></div>
+    <div class="metric"><small>待重组区间</small><strong id="pendingMetric">空</strong></div>
+    <div class="metric"><small>EOF</small><strong id="eof">未知</strong></div>
+  </div>
+  <div class="track" role="img" aria-label="0 到 9 号流位置的重组状态">
+    <div id="track" class="grid"></div>
+  </div>
+  <h2>片段到达顺序</h2>
+  <div id="events" class="events"></div>
+  <h2>当前动作</h2>
+  <p id="action" class="state" aria-live="polite">尚未有片段到达。</p>
+  <p class="state">接收端 ByteStream：<strong id="output">空</strong></p>
+  <p class="state">待重组：<strong id="pendingText">空</strong></p>
+  <p class="muted">绿色：已交付；橙色：待重组；红色：空洞。接收端应用只能从 ByteStream 读到绿色的连续前缀。</p>
+  <script>
+    const stream = "ABCDEFGHIJ";
+    const arrivals = [{ start: 5, data: "FGH", last: false }, { start: 0, data: "ABC", last: false }, { start: 2, data: "DEFG", last: false }, { start: 8, data: "IJ", last: true }];
+    const states = [{ first: 0, pending: [], output: "", eof: null, action: "尚未有片段到达。" }, { first: 0, pending: [{ start: 5, end: 8, text: "FGH" }], output: "", eof: null, action: "到达 [5,8)：位置 0 仍然缺失，先保存 FGH。" }, { first: 3, pending: [{ start: 5, end: 8, text: "FGH" }], output: "ABC", eof: null, action: "到达 [0,3)：先输出 ABC；[3,5) 是空洞，FGH 继续等待。" }, { first: 8, pending: [], output: "ABCDEFGH", eof: null, action: "到达 [2,6)：与已有范围重叠，去重后补齐 DEFG，连续输出到位置 8。" }, { first: 10, pending: [], output: "ABCDEFGHIJ", eof: 10, action: "到达 [8,10) 且标记 EOF：补齐到位置 10，现在才可以关闭输出。" }];
+    let current = 0;
+    const byId = (id) => document.getElementById(id);
+    const interval = (item) => `[${item.start},${item.end}) ${item.text}`;
+    function draw() {
+      const state = states[current];
+      byId("step").textContent = `步骤 ${current} / ${arrivals.length}`;
+      byId("first").textContent = state.first;
+      byId("pendingMetric").textContent = state.pending.length ? state.pending.map(interval).join("；") : "空";
+      byId("eof").textContent = state.eof === null ? "未知" : state.eof;
+      byId("action").textContent = state.action;
+      byId("output").textContent = state.output || "空";
+      byId("pendingText").textContent = state.pending.length ? state.pending.map(interval).join("；") : "空";
+      byId("next").disabled = current === arrivals.length;
+      const track = byId("track"); track.innerHTML = "";
+      const add = (text, className) => { const node = document.createElement("div"); node.className = className; node.textContent = text; track.appendChild(node); };
+      add("流位置", "label"); for (let i = 0; i < stream.length; i += 1) add(i, "cell position");
+      add("目标字节", "label"); for (const byte of stream) add(byte, "cell");
+      add("重组状态", "label");
+      for (let i = 0; i < stream.length; i += 1) { let className = "cell"; let text = "未处理"; if (i < state.first) { className += " delivered"; text = "已交付"; } else if (state.pending.some((item) => i >= item.start && i < item.end)) { className += " pending"; text = "待重组"; } else if (state.pending.some((item) => item.start > i)) { className += " gap"; text = "空洞"; } add(text, className); }
+      const events = byId("events"); events.innerHTML = ""; arrivals.forEach((item, index) => { const node = document.createElement("div"); node.className = `event ${index + 1 === current ? "current" : index + 1 < current ? "done" : ""}`; node.textContent = `[${item.start},${item.start + item.data.length}) ${item.data}${item.last ? " · EOF" : ""}`; events.appendChild(node); });
+    }
+    byId("reset").addEventListener("click", () => { current = 0; draw(); });
+    byId("next").addEventListener("click", () => { if (current < arrivals.length) { current += 1; draw(); } });
+    draw();
+  </script>
+</body>
+</html>
