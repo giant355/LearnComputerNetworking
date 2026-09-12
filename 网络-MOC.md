@@ -18,7 +18,7 @@
 11. [[09_网络接口状态机|第 9 课：把 ARP 变成状态机]] 已于 2026-09-08 完成检查站，达到基本掌握；[[Labs/Lab1_TinyARPInterface/README|Lab 1：Tiny ARP Network Interface]] 已通过 6/6 测试。
 12. [[10_端口与UDP|第 10 课：IP 找到电脑以后——端口、套接字与 UDP]] 与 [[10b_补充_UDP首部与封装长度|Lesson 10B]] 已于 2026-09-09 完成，达到基本掌握；首次复习为 2026-09-10。
 13. [[11_有限容量字节流|第 11 课：数据写得太快怎么办——有限容量字节流]] 已完成检查，达到基本掌握；首次复习为 2026-09-12。
-14. [[Labs/Lab2_TinyStream/README|Lab 2：TinyStream]] 已开放，等待实现与测试验收。
+14. [[Labs/Lab2_TinyStream/README|Lab 2：TinyStream]] 已完成验收，7/7 测试通过。
 
 > [!important]
 > 第 11 课状态迁移复测已通过，TinyStream Lab 已开放。第 9 课与 Lab 1 的到期复习继续保留在队列中。
@@ -85,7 +85,7 @@ flowchart LR
 | 10 | [[10_端口与UDP|端口、套接字与 UDP]] | 2–2.75 小时 | 基本掌握；2026-09-10 复习 |
 | 10B | [[10b_补充_UDP首部与封装长度|UDP 首部与封装长度补充]] | 15–25 分钟 | 收尾复测通过 |
 | 11 | [[11_有限容量字节流|有限容量字节流]] | 2.2–3 小时 | 基本掌握；2026-09-12 复习 |
-| 2 | [[Labs/Lab2_TinyStream/README|TinyStream]] | 1.5–2.5 小时（电脑旁） | 已开放；实现有限容量字节流 |
+| 2 | [[Labs/Lab2_TinyStream/README|TinyStream]] | 1.5–2.5 小时（电脑旁） | 已完成；7/7 测试通过 |
 
 ## 使用说明
 
