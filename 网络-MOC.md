@@ -20,10 +20,10 @@
 13. [[11_有限容量字节流|第 11 课：数据写得太快怎么办——有限容量字节流]] 已完成检查，达到基本掌握；首次复习为 2026-09-12。
 14. [[Labs/Lab2_TinyStream/README|Lab 2：TinyStream]] 已完成验收，7/7 测试通过。
 15. [[12_乱序子串重组|第 12 课：数据到了，但顺序乱了——乱序子串重组器]] 已完成检查站，达到基本掌握。
-16. [[Labs/Lab3_TinyReassembler/README|Lab 3：TinyReassembler]] 已开放，实现裁剪、去重、乱序重组、容量窗口和 EOF 关闭。
+16. [[Labs/Lab3_TinyReassembler/README|Lab 3：TinyReassembler]] 已完成，窗口裁剪、去重、乱序重组、容量释放和 EOF 关闭共八组测试通过。
 
 > [!important]
-> 第 12 课检查站已达到基本掌握，Lab 3：TinyReassembler 已开放。附加迁移题不作要求；第 11、12 课与旧课程的到期复习继续保留在队列中。
+> 第 12 课检查站与 Lab 3 已达到基本掌握，TinyReassembler 八组测试通过。下一步进入 TCP 接收端、确认号与窗口；第 11、12 课与旧课程的到期复习继续保留在队列中。
 
 ## 学习记录
 
@@ -89,7 +89,7 @@ flowchart LR
 | 11 | [[11_有限容量字节流|有限容量字节流]] | 2.2–3 小时 | 基本掌握；2026-09-12 复习 |
 | 2 | [[Labs/Lab2_TinyStream/README|TinyStream]] | 1.5–2.5 小时（电脑旁） | 已完成；7/7 测试通过 |
 | 12 | [[12_乱序子串重组|乱序子串重组器]] | 2.2–3 小时 | 基本掌握；2026-09-14 复习 |
-| 3 | [[Labs/Lab3_TinyReassembler/README|TinyReassembler]] | 2–3.5 小时（电脑旁） | 已开放 |
+| 3 | [[Labs/Lab3_TinyReassembler/README|TinyReassembler]] | 2–3.5 小时（电脑旁） | 已完成；8/8 测试通过 |
 
 ## 使用说明
 
