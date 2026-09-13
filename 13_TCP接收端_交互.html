@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TCP 接收端：序号、ACK 与窗口</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f5f7fb; --panel:#fff; --text:#172033; --muted:#5c667a; --line:#d7ddeb; --accent:#315ee7; --accent-soft:#e8edff; --pending:#f4a261; --output:#2a9d8f; --empty:#e7eaf1; --danger:#d1495b; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#10131a; --panel:#191e29; --text:#edf1fa; --muted:#aab4c8; --line:#343c4d; --accent:#88a4ff; --accent-soft:#273253; --pending:#f4a261; --output:#58c7b9; --empty:#2a3040; --danger:#ff8796; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+    main { width:min(980px,calc(100% - 28px)); margin:24px auto 48px; }
+    h1 { margin:0 0 6px; font-size:clamp(25px,4vw,38px); line-height:1.2; }
+    h2 { margin:0 0 12px; font-size:18px; }
+    p { margin:6px 0; }
+    .lead { color:var(--muted); margin-bottom:18px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; margin:14px 0; box-shadow:0 8px 24px rgba(20,30,60,.06); }
+    .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    button { border:0; border-radius:10px; padding:10px 16px; font:inherit; font-weight:700; cursor:pointer; }
+    #next { background:var(--accent); color:white; }
+    #reset { background:var(--accent-soft); color:var(--text); }
+    button:focus-visible { outline:3px solid var(--pending); outline-offset:2px; }
+    .step { margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+    .event { border-left:5px solid var(--accent); padding-left:14px; min-height:82px; }
+    .event strong { color:var(--accent); }
+    code { background:var(--accent-soft); border-radius:5px; padding:1px 5px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .metrics { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+    .metric { border:1px solid var(--line); border-radius:12px; padding:12px; min-height:92px; }
+    .metric span { display:block; color:var(--muted); font-size:13px; }
+    .metric strong { display:block; margin-top:6px; font-size:24px; font-variant-numeric:tabular-nums; }
+    .strip { display:grid; grid-template-columns:repeat(12,minmax(42px,1fr)); gap:5px; overflow-x:auto; padding-bottom:5px; }
+    .cell { border:1px solid var(--line); border-radius:9px; text-align:center; padding:7px 3px; min-width:42px; background:var(--empty); }
+    .cell small { display:block; color:var(--muted); font-size:10px; }
+    .cell.syn,.cell.fin { background:var(--accent-soft); border-color:var(--accent); }
+    .cell.pending { background:color-mix(in srgb,var(--pending) 35%,var(--panel)); border-color:var(--pending); }
+    .cell.output { background:color-mix(in srgb,var(--output) 32%,var(--panel)); border-color:var(--output); }
+    .cell.read { opacity:.42; text-decoration:line-through; }
+    .legend { display:flex; flex-wrap:wrap; gap:14px; color:var(--muted); font-size:13px; margin-top:10px; }
+    .dot { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+    .buffer { min-height:54px; border:1px dashed var(--line); border-radius:10px; padding:12px; font:700 19px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace; letter-spacing:2px; word-break:break-all; }
+    .pending-text { color:var(--pending); }
+    .output-text { color:var(--output); }
+    .invariant { color:var(--muted); }
+    .warn { color:var(--danger); }
+    @media (max-width:720px) { .grid { grid-template-columns:1fr; } .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .step { width:100%; margin-left:0; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>TCP 接收端：序号、ACK 与窗口</h1>
+  <p class="lead">固定场景：ISN=1000，接收容量=10，目标字节流是 <code>ABCDEFGHIJ</code>。橙色表示乱序暂存，绿色表示已连续重组进 ByteStream。</p>
+
+  <section class="card controls" aria-label="演示控制">
+    <button id="next" type="button">下一步</button>
+    <button id="reset" type="button">重新开始</button>
+    <span class="step" id="stepLabel">步骤 0 / 5</span>
+  </section>
+
+  <section class="card event" aria-live="polite">
+    <strong id="eventTitle">连接尚未开始</strong>
+    <p id="eventBody">点击“下一步”，先让 B 收到 A 的 SYN。</p>
+    <p class="invariant" id="reason">观察重点：ACK 表示下一个期待的 TCP 序号；窗口表示当前剩余容量。</p>
+  </section>
+
+  <section class="card">
+    <h2>TCP 序号空间</h2>
+    <div class="strip" id="strip" aria-label="TCP 序号空间"></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--accent-soft);border:1px solid var(--accent)"></i>SYN / FIN</span>
+      <span><i class="dot" style="background:var(--pending)"></i>已到但有空洞</span>
+      <span><i class="dot" style="background:var(--output)"></i>已连续重组</span>
+      <span>删除线：应用已读取</span>
+    </div>
+  </section>
+
+  <section class="metrics" aria-label="接收端状态">
+    <div class="metric"><span>ACK（下一个期待序号）</span><strong id="ack">—</strong></div>
+    <div class="metric"><span>通告窗口</span><strong id="window">10</strong></div>
+    <div class="metric"><span>first_unassembled</span><strong id="first">0</strong></div>
+    <div class="metric"><span>is_finished</span><strong id="finished">false</strong></div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>Reassembler 待重组</h2>
+      <div class="buffer pending-text" id="pending">空</div>
+      <p class="invariant" id="eof">EOF 位置：未知</p>
+    </div>
+    <div class="card">
+      <h2>接收 ByteStream（尚未被应用读走）</h2>
+      <div class="buffer output-text" id="buffer">空</div>
+      <p class="invariant" id="writer">Writer：open</p>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>当前换算</h2>
+    <p id="mapping">还没有 payload 需要换算。</p>
+  </section>
+</main>
+<script>
+  const states = [
+    { title:"连接尚未开始", body:"点击“下一步”，先让 B 收到 A 的 SYN。", reason:"ACK 表示下一个期待的 TCP 序号；窗口表示当前剩余容量。", ack:"—", win:10, first:0, pending:"空", buffer:"空", eof:"EOF 位置：未知", writer:"Writer：open", finished:false, mapping:"还没有 payload 需要换算。", phase:0 },
+    { title:"B 收到 SYN：SEQ=1000", body:"B 记录 ISN=1000。SYN 自己占用序号 1000，因此第一个应用字节应使用 1001。", reason:"收到 SYN 后，即使还没有 payload，ACK 也前进到 ISN+1。", ack:1001, win:10, first:0, pending:"空", buffer:"空", eof:"EOF 位置：未知", writer:"Writer：open", finished:false, mapping:"只有 SYN，没有 payload；重组器仍从流位置 0 等待。", phase:1 },
+    { title:"后半段先到：SEQ=1006，payload=FGHIJ，FIN=1", body:"这 5 字节对应流位置 [5,10)，因 [0,5) 还是空洞，只能暂存在 Reassembler；FIN 告诉我们 EOF 在流位置 10。", reason:"数据到了不等于连续到达：ACK 仍为 1001。暂存占 5 字节，所以窗口从 10 缩到 5。", ack:1001, win:5, first:0, pending:"[5,10)  FGHIJ", buffer:"空", eof:"EOF 位置：10（已知道，但尚未连续到达）", writer:"Writer：open", finished:false, mapping:"first_index = 1006 - 1000 - 1 = 5", phase:2 },
+    { title:"空洞补齐：SEQ=1001，payload=ABCDE", body:"[0,5) 到达后，Reassembler 能把 ABCDE 和暂存的 FGHIJ 一起连续推入 ByteStream，并到达 EOF。", reason:"ACK 一次越过 SYN、10 个应用字节和 FIN：1000+1+10+1=1012。缓冲区已占满，窗口为 0。", ack:1012, win:0, first:10, pending:"空", buffer:"ABCDEFGHIJ", eof:"EOF 位置：10（已连续到达）", writer:"Writer：closed", finished:false, mapping:"first_index = 1001 - 1000 - 1 = 0", phase:3 },
+    { title:"B 应用 Reader 读走 4 字节", body:"应用执行 pop(4)，取走 ABCD。TCP 已确认的连续范围没有改变。", reason:"ACK 不变；读取释放 4 个容量，所以窗口从 0 扩大到 4。Writer 虽已关闭，缓冲区仍非空。", ack:1012, win:4, first:10, pending:"空", buffer:"EFGHIJ", eof:"EOF 位置：10（已连续到达）", writer:"Writer：closed", finished:false, mapping:"没有新网络段；应用读取不会改变序号换算或 ACK。", phase:4 },
+    { title:"B 应用读完剩余 6 字节", body:"应用执行 pop(6)，接收 ByteStream 变空。", reason:"ACK 仍为 1012；窗口恢复到 10；Writer 已关闭且缓冲区为空，所以 is_finished=true。", ack:1012, win:10, first:10, pending:"空", buffer:"空", eof:"EOF 位置：10（已完成）", writer:"Writer：closed", finished:true, mapping:"完整方向已经接收并读取完毕。", phase:5 }
+  ];
+  const letters = "ABCDEFGHIJ".split("");
+  let index = 0;
+  const $ = id => document.getElementById(id);
+  function renderStrip(phase) {
+    const strip = $("strip"); strip.textContent = "";
+    const syn = document.createElement("div"); syn.className = "cell syn"; syn.innerHTML = `<small>SEQ 1000</small>SYN`; strip.appendChild(syn);
+    letters.forEach((letter,i) => { const cell=document.createElement("div"); let cls="cell"; if (phase===2 && i>=5) cls+=" pending"; if (phase>=3) cls+=" output"; if (phase===4 && i<4) cls+=" read"; if (phase===5) cls+=" read"; cell.className=cls; cell.innerHTML=`<small>SEQ ${1001+i}</small>${letter}`; strip.appendChild(cell); });
+    const fin = document.createElement("div"); fin.className="cell fin"; fin.innerHTML="<small>SEQ 1011</small>FIN"; strip.appendChild(fin);
+  }
+  function render() {
+    const s=states[index]; $("eventTitle").textContent=s.title; $("eventBody").textContent=s.body; $("reason").textContent=s.reason; $("ack").textContent=s.ack; $("window").textContent=s.win; $("first").textContent=s.first; $("pending").textContent=s.pending; $("buffer").textContent=s.buffer; $("eof").textContent=s.eof; $("writer").textContent=s.writer; $("finished").textContent=s.finished; $("mapping").textContent=s.mapping; $("stepLabel").textContent=`步骤 ${index} / ${states.length-1}`; $("next").textContent=index===states.length-1?"再看一遍":"下一步"; renderStrip(s.phase);
+  }
+  $("next").addEventListener("click",()=>{ index=index===states.length-1?0:index+1; render(); });
+  $("reset").addEventListener("click",()=>{ index=0; render(); });
+  render();
+</script>
+</body>
+</html>
