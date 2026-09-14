@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>TCP 发送端：窗口与重传</title>
+  <style>
+    :root { color-scheme:light dark; --bg:#f5f7fb; --panel:#fff; --text:#172033; --muted:#5c667a; --line:#d7ddeb; --accent:#315ee7; --accent-soft:#e8edff; --sent:#2a9d8f; --wait:#f4a261; --ack:#7b61d1; --danger:#d1495b; --empty:#e7eaf1; }
+    @media (prefers-color-scheme:dark) { :root { --bg:#10131a; --panel:#191e29; --text:#edf1fa; --muted:#aab4c8; --line:#343c4d; --accent:#88a4ff; --accent-soft:#273253; --sent:#58c7b9; --wait:#f4a261; --ack:#aa91ff; --danger:#ff8796; --empty:#2a3040; } }
+    * { box-sizing:border-box; }
+    body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif; }
+    main { width:min(980px,calc(100% - 28px)); margin:24px auto 48px; }
+    h1 { margin:0 0 6px; font-size:clamp(25px,4vw,38px); line-height:1.2; }
+    h2 { margin:0 0 12px; font-size:18px; }
+    p { margin:6px 0; }
+    code { background:var(--accent-soft); border-radius:5px; padding:1px 5px; }
+    .lead { color:var(--muted); margin-bottom:18px; }
+    .card { background:var(--panel); border:1px solid var(--line); border-radius:16px; padding:18px; margin:14px 0; box-shadow:0 8px 24px rgba(20,30,60,.06); }
+    .controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+    button { border:0; border-radius:10px; padding:10px 16px; font:inherit; font-weight:700; cursor:pointer; }
+    #next { background:var(--accent); color:white; }
+    #reset { background:var(--accent-soft); color:var(--text); }
+    button:focus-visible { outline:3px solid var(--wait); outline-offset:2px; }
+    .step { margin-left:auto; color:var(--muted); font-variant-numeric:tabular-nums; }
+    .event { border-left:5px solid var(--accent); padding-left:14px; min-height:100px; }
+    .event strong { color:var(--accent); }
+    .metrics { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); gap:10px; }
+    .metric { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:12px; min-height:92px; }
+    .metric span { display:block; color:var(--muted); font-size:13px; }
+    .metric strong { display:block; margin-top:6px; font-size:22px; font-variant-numeric:tabular-nums; }
+    .strip { display:grid; grid-template-columns:repeat(11,minmax(52px,1fr)); gap:5px; overflow-x:auto; padding-bottom:6px; }
+    .cell { border:1px solid var(--line); border-radius:9px; text-align:center; padding:7px 3px; min-width:52px; background:var(--empty); transition:background .2s,border-color .2s,opacity .2s; }
+    .cell small { display:block; color:var(--muted); font-size:10px; }
+    .cell.acked { opacity:.42; text-decoration:line-through; }
+    .cell.window { border-color:var(--accent); box-shadow:inset 0 -3px var(--accent); }
+    .cell.outstanding { background:color-mix(in srgb,var(--wait) 35%,var(--panel)); border-color:var(--wait); }
+    .cell.retransmit { background:color-mix(in srgb,var(--danger) 28%,var(--panel)); border-color:var(--danger); }
+    .cell.unsent { background:var(--empty); }
+    .legend { display:flex; flex-wrap:wrap; gap:14px; color:var(--muted); font-size:13px; margin-top:10px; }
+    .dot { display:inline-block; width:11px; height:11px; border-radius:3px; margin-right:5px; vertical-align:-1px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:14px; }
+    .buffer { min-height:58px; border:1px dashed var(--line); border-radius:10px; padding:12px; font:700 18px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace; word-break:break-all; }
+    .queue-item { display:inline-block; border:1px solid var(--wait); border-radius:8px; padding:4px 8px; margin:2px 5px 2px 0; color:var(--wait); }
+    .timer-track { height:14px; border-radius:7px; background:var(--empty); overflow:hidden; margin:12px 0 5px; }
+    .timer-bar { height:100%; background:var(--accent); transition:width .25s; }
+    .timer-bar.timeout { background:var(--danger); }
+    .muted { color:var(--muted); }
+    .danger { color:var(--danger); }
+    @media (max-width:780px) { .metrics { grid-template-columns:repeat(2,minmax(0,1fr)); } .grid { grid-template-columns:1fr; } .step { width:100%; margin-left:0; } }
+    @media (max-width:390px) { .metrics { grid-template-columns:1fr; } button { min-height:44px; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>TCP 发送端：窗口与重传</h1>
+  <p class="lead">固定场景：ISN=1000，应用字节流为 <code>ABCDEFGH</code>，接收端窗口初始为 4，MSS=3，初始 RTO=1000 ms。</p>
+
+  <section class="card controls" aria-label="演示控制">
+    <button id="next" type="button">下一步</button>
+    <button id="reset" type="button">重新开始</button>
+    <span class="step" id="stepLabel">步骤 0 / 10</span>
+  </section>
+
+  <section class="card event" aria-live="polite">
+    <strong id="eventTitle">发送端尚未开始</strong>
+    <p id="eventBody">点击“下一步”，先发送占用一个序号位置的 SYN。</p>
+    <p class="muted" id="reason">观察：新发送会推进 next_seqno；重传不会。</p>
+  </section>
+
+  <section class="metrics" aria-label="发送端状态">
+    <div class="metric"><span>累计确认位置</span><strong id="ack">1000</strong></div>
+    <div class="metric"><span>next_seqno</span><strong id="nextSeq">1000</strong></div>
+    <div class="metric"><span>bytes_in_flight</span><strong id="flight">0</strong></div>
+    <div class="metric"><span>当前有效发送窗口</span><strong id="window">1*</strong></div>
+    <div class="metric"><span>当前 RTO</span><strong id="rto">1000 ms</strong></div>
+  </section>
+
+  <section class="card">
+    <h2>TCP 序号空间与当前发送窗口</h2>
+    <div class="strip" id="strip" aria-label="TCP 发送序号空间"></div>
+    <div class="legend">
+      <span><i class="dot" style="background:var(--accent)"></i>蓝色下边线：当前窗口</span>
+      <span><i class="dot" style="background:var(--wait)"></i>未确认</span>
+      <span><i class="dot" style="background:var(--danger)"></i>本步重传</span>
+      <span>删除线：已累计确认</span>
+    </div>
+  </section>
+
+  <section class="grid">
+    <div class="card">
+      <h2>发送 ByteStream 中尚未取出的字节</h2>
+      <div class="buffer" id="stream">ABCDEFGH</div>
+    </div>
+    <div class="card">
+      <h2>outstanding 队列</h2>
+      <div class="buffer" id="outstanding">空</div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>最旧未确认段的计时器</h2>
+    <div class="timer-track" role="progressbar" aria-label="重传计时器" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><div class="timer-bar" id="timerBar" style="width:0%"></div></div>
+    <p id="timerText">停止：当前没有需要确认的段。</p>
+  </section>
+</main>
+
+<script>
+  const steps = [
+    { title:"发送端尚未开始", body:"应用已经写入 ABCDEFGH，但 SYN 尚未发送。", reason:"新连接在没有接收端窗口信息时，最小发送端仍允许一个序号位置，以便 SYN 发出。", ack:1000,next:1000,window:1,rto:1000,timer:0,stream:"ABCDEFGH",out:[],ret:null },
+    { title:"发送 SYN", body:"发出 SEQ=1000、SYN=1。SYN 占一个序号位置。", reason:"这是新内容，因此 next_seqno 前进到 1001，bytes_in_flight 变成 1，计时器启动。", ack:1000,next:1001,window:1,rto:1000,timer:180,stream:"ABCDEFGH",out:["SYN [1000,1001)"],ret:null },
+    { title:"收到 ACK=1001，window=4", body:"SYN 得到累计确认，outstanding 清空，发送窗口变成 [1001,1005)。", reason:"新 ACK 推进确认边界；没有未确认段，所以计时器停止。", ack:1001,next:1001,window:4,rto:1000,timer:0,stream:"ABCDEFGH",out:[],ret:null },
+    { title:"发送 ABC", body:"发出 SEQ=1001、payload=ABC，占用 [1001,1004)。", reason:"MSS=3，窗口足够；新段进入 outstanding，并启动计时器。", ack:1001,next:1004,window:4,rto:1000,timer:260,stream:"DEFGH",out:["ABC [1001,1004)"],ret:null },
+    { title:"只剩一个窗口位置，发送 D", body:"发出 SEQ=1004、payload=D。窗口 [1001,1005) 被填满。", reason:"后续新段不会让最旧段的计时器归零，否则 ABC 可能永远等不到超时。", ack:1001,next:1005,window:4,rto:1000,timer:520,stream:"EFGH",out:["ABC [1001,1004)","D [1004,1005)"],ret:null },
+    { title:"收到 ACK=1004，window=4", body:"ABC 被确认并删除，D 尚未确认；窗口滑动为 [1004,1008)。", reason:"ACK 真正推进，RTO 恢复初始值；因为仍有 D，计时器从零重新等待 D。", ack:1004,next:1005,window:4,rto:1000,timer:80,stream:"EFGH",out:["D [1004,1005)"],ret:null },
+    { title:"发送 EFG", body:"新窗口还剩三个位置，发出 SEQ=1005、payload=EFG。", reason:"D 和 EFG 合计占满 4 个未确认位置；计时器继续盯住最旧的 D。", ack:1004,next:1008,window:4,rto:1000,timer:650,stream:"H",out:["D [1004,1005)","EFG [1005,1008)"],ret:null },
+    { title:"RTO 到期，重传 D", body:"计时器达到原来的 1000 ms，没有新 ACK，于是重传 outstanding 队首 D。", reason:"D 早已计入在途数据，所以 bytes_in_flight 仍是 4；重传后计时归零，下一轮 RTO 加倍为 2000 ms。", ack:1004,next:1008,window:4,rto:2000,timer:1000,timerLimit:1000,stream:"H",out:["D [1004,1005)","EFG [1005,1008)"],ret:"D" },
+    { title:"收到 ACK=1008，window=3", body:"D 和 EFG 都被累计确认，outstanding 清空。", reason:"新 ACK 把确认边界推进到 1008，计时器停止，RTO 恢复为 1000 ms。", ack:1008,next:1008,window:3,rto:1000,timer:0,stream:"H",out:[],ret:null },
+    { title:"发送 H 和 FIN", body:"应用 Writer 已关闭，最后一个字节 H 与 FIN 共占两个序号位置。", reason:"发出 SEQ=1008、payload=H、FIN=1，next_seqno 推进到 1010。", ack:1008,next:1010,window:3,rto:1000,timer:240,stream:"空（Writer closed）",out:["H+FIN [1008,1010)"],ret:null },
+    { title:"收到 ACK=1010，发送方向结束", body:"H 与 FIN 都得到确认，outstanding 再次清空。", reason:"这个方向已经没有应用字节、没有未发送 FIN，也没有在途数据。", ack:1010,next:1010,window:3,rto:1000,timer:0,stream:"空（Writer closed）",out:[],ret:null }
+  ];
+
+  const labels = ["SYN","A","B","C","D","E","F","G","H","FIN","—"];
+  let index = 0;
+  const el = id => document.getElementById(id);
+
+  function renderStrip(state) {
+    const strip = el("strip");
+    strip.innerHTML = "";
+    const windowEnd = state.ack + state.window;
+    labels.forEach((label,i) => {
+      const seq = 1000 + i;
+      const cell = document.createElement("div");
+      cell.className = "cell";
+      const occupied = seq < state.next;
+      if (seq < state.ack) cell.classList.add("acked");
+      else if (occupied) cell.classList.add("outstanding");
+      else cell.classList.add("unsent");
+      if (seq >= state.ack && seq < windowEnd) cell.classList.add("window");
+      if (state.ret === "D" && seq === 1004) cell.classList.add("retransmit");
+      cell.innerHTML = `<small>${seq}</small>${label}`;
+      strip.appendChild(cell);
+    });
+  }
+
+  function render() {
+    const state = steps[index];
+    el("stepLabel").textContent = `步骤 ${index} / ${steps.length - 1}`;
+    el("eventTitle").textContent = state.title;
+    el("eventBody").textContent = state.body;
+    el("reason").textContent = state.reason;
+    el("ack").textContent = state.ack;
+    el("nextSeq").textContent = state.next;
+    el("flight").textContent = state.next - state.ack;
+    el("window").textContent = index === 0 ? `${state.window}*` : state.window;
+    el("rto").textContent = `${state.rto} ms`;
+    el("stream").textContent = state.stream;
+    el("outstanding").innerHTML = state.out.length ? state.out.map(item => `<span class="queue-item">${item}</span>`).join("") : "空";
+    const timerLimit = state.timerLimit || state.rto;
+    const percent = state.timer === 0 ? 0 : Math.min(100,Math.round(state.timer / timerLimit * 100));
+    el("timerBar").style.width = `${percent}%`;
+    el("timerBar").classList.toggle("timeout",percent === 100);
+    el("timerText").textContent = state.timer === 0 ? "停止：当前没有需要确认的段。" : percent === 100 ? `达到上一轮阈值 ${timerLimit} ms：本步发生超时；新的 RTO 是 ${state.rto} ms。` : `已经等待 ${state.timer} ms / ${state.rto} ms；计时对象是 outstanding 队首。`;
+    const progress = document.querySelector(".timer-track");
+    progress.setAttribute("aria-valuenow",String(percent));
+    el("next").textContent = index === steps.length - 1 ? "重新播放" : "下一步";
+    renderStrip(state);
+  }
+
+  el("next").addEventListener("click",() => { index = index === steps.length - 1 ? 0 : index + 1; render(); });
+  el("reset").addEventListener("click",() => { index = 0; render(); });
+  render();
+</script>
+</body>
+</html>

@@ -21,10 +21,12 @@
 14. [[Labs/Lab2_TinyStream/README|Lab 2：TinyStream]] 已完成验收，7/7 测试通过。
 15. [[12_乱序子串重组|第 12 课：数据到了，但顺序乱了——乱序子串重组器]] 已完成检查站，达到基本掌握。
 16. [[Labs/Lab3_TinyReassembler/README|Lab 3：TinyReassembler]] 已完成，窗口裁剪、去重、乱序重组、容量释放和 EOF 关闭共八组测试通过。
-17. [[13_TCP接收端_序号_ACK与窗口|第 13 课：TCP 接收端——序号、ACK 与接收窗口]] 首次检查为部分掌握；完成末尾四题收尾复测后再开放 Lab 4。
+17. [[13_TCP接收端_序号_ACK与窗口|第 13 课：TCP 接收端——序号、ACK 与接收窗口]] 已通过收尾复测，达到基本掌握。
+18. [[Labs/Lab4_TinyTCPReceiver/README|Lab 4：Tiny TCP Receiver]] 已完成，序号回绕、接收重组、累计 ACK 与窗口共十组测试通过。
+19. 当前课程：[[14_TCP发送端_滑动窗口与重传|第 14 课：TCP 发送端——滑动窗口、超时与重传]]，配有逐步交互演示。
 
 > [!important]
-> 第 12 课检查站与 Lab 3 已达到基本掌握，TinyReassembler 八组测试通过。第 13 课的累计 ACK、窗口和 FIN/EOF 主线已正确，当前只需完成 SYN 占位与 `first_index` 换算的四题收尾复测。
+> 第 13 课与 Lab 4 已达到基本掌握。现在进入发送端：先理解窗口填充、outstanding、单个重传计时器与指数退避，再通过检查站开放 Lab 5。
 
 ## 学习记录
 
@@ -93,6 +95,8 @@ flowchart LR
 | 3 | [[Labs/Lab3_TinyReassembler/README|TinyReassembler]] | 2–3.5 小时（电脑旁） | 已完成；8/8 测试通过 |
 | 13 | [[13_TCP接收端_序号_ACK与窗口|TCP 接收端：序号、ACK 与接收窗口]] | 2.5–3.5 小时 | 基本掌握；2026-09-15 复习 |
 | 4 | [[Labs/Lab4_TinyTCPReceiver/README|Tiny TCP Receiver]] | 2.5–4 小时（电脑旁） | 已完成；10/10 测试通过 |
+| 14 | [[14_TCP发送端_滑动窗口与重传|TCP 发送端：滑动窗口、超时与重传]] | 2.5–3.25 小时 | 已发布；等待检查站 |
+| 5 | Tiny TCP Sender | 3–5 小时（电脑旁） | 第 14 课达到基本掌握后开放 |
 
 ## 使用说明
 
