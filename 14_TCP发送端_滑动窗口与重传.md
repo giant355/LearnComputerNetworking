@@ -119,8 +119,8 @@ TCP Sender
 | 状态 | 回答的问题 |
 | --- | --- |
 | `ISN` | 绝对序号 0 在线上写成哪个 32 位数？ |
-| `next_seqno` | 下一份新内容应该从哪个内部绝对序号开始？ |
-| `acknowledged` | 接收端已经累计确认到哪个内部绝对位置？ |
+| `next_seqno_abs` | 下一份新内容应该从哪个内部绝对序号开始？ |
+| `acknowledged_abs` | 有效 ACK 已经累计确认到哪个内部绝对位置？ |
 | `advertised_window` | 接收端允许从 ACK 起再占用多少序号位置？ |
 | `outstanding` | 哪些段已经发送，但还不能删除？ |
 | `bytes_in_flight` | 还有多少个序号位置尚未得到累计确认？ |
@@ -128,6 +128,8 @@ TCP Sender
 | `RTO` | 等待多久算一次重传超时？ |
 
 这里的 `outstanding` 通常保存 TCP 段的副本。否则第一次发送后丢失，发送端就没有内容可供重传。
+
+注意：`ACK` 和 `acknowledged_abs` 表达的是同一条确认进度，但不是同一种表示。`ACK` 是 TCP 首部里的 32 位线上序号；发送端收到它后，要先 `unwrap` 并验证是否合法，再把得到的 64 位内部位置保存为 `acknowledged_abs`。例如 `ISN=1000、ACK=1004` 时，`acknowledged_abs=4`。
 
 ---
 
@@ -155,11 +157,11 @@ window = 4
 左边界由累计 ACK 决定，右边界由 `ACK + window` 决定：
 
 ```text
-发送窗口左边界 = acknowledged
-发送窗口右边界 = acknowledged + advertised_window
+内部发送窗口左边界 = acknowledged_abs
+内部发送窗口右边界 = acknowledged_abs + advertised_window
 ```
 
-如果 `next_seqno=1005`，说明位置 1004 已经发出但未确认，那么当前还能发送：
+上面的 `[1004,1008)` 是为了直观而写出的线上坐标；在 `ISN=1000` 的这个例子里，对应的内部范围是 `[4,8)`。如果 `next_seqno_abs=5`（下一份新数据的线上 SEQ 是 1005），说明位置 1004 已经发出但未确认，那么当前还能发送：
 
 ```text
 1005、1006、1007，共 3 个序号位置
@@ -195,14 +197,14 @@ window = 3
 可以用内部绝对位置近似写成：
 
 ```text
-bytes_in_flight = next_seqno - acknowledged
+bytes_in_flight = next_seqno_abs - acknowledged_abs
 ```
 
 假设：
 
 ```text
-acknowledged = 4
-next_seqno = 8
+acknowledged_abs = 4
+next_seqno_abs = 8
 ```
 
 那么：
@@ -246,7 +248,7 @@ SYN 占 1 个序号位置：
 
 ```text
 bytes_in_flight = 1
-next_seqno = 1001
+next_seqno_abs = 1（下一新 SEQ 在线上显示为 1001）
 ```
 
 ### 第二步：收到对 SYN 的确认
@@ -274,7 +276,7 @@ SEQ=1001, payload=ABC
 
 ```text
 bytes_in_flight = 3
-next_seqno = 1004
+next_seqno_abs = 4（下一新 SEQ 在线上显示为 1004）
 ```
 
 ### 第四步：窗口只剩一个位置
@@ -289,7 +291,7 @@ SEQ=1004, payload=D
 
 ```text
 bytes_in_flight = 4
-next_seqno = 1005
+next_seqno_abs = 5（下一新 SEQ 在线上显示为 1005）
 窗口已满，E 暂时不能发送
 ```
 
@@ -576,7 +578,7 @@ Writer 调用 `close()` 只表示应用不会再写新字节，不表示 FIN 必
 发送端内部继续用 64 位绝对位置记账：
 
 ```text
-next_seqno、acknowledged、outstanding 起止位置
+next_seqno_abs、acknowledged_abs、outstanding 起止位置
 ```
 
 真正制作 TCP 首部时才调用：
@@ -603,7 +605,7 @@ next_seqno、acknowledged、outstanding 起止位置
 32 位 ACK
   ↓ unwrap
 内部绝对 ACK
-  ↓ 检查是否超过 next_seqno
+  ↓ 检查是否超过 next_seqno_abs
 合法吗？
   ↓ 是
 更新接收端通告窗口
@@ -619,7 +621,7 @@ ACK 是否真正推进？
           尝试发送新数据
 ```
 
-为什么 ACK 不能超过 `next_seqno`？因为发送端不能接受对方确认自己从未发送过的序号位置。
+为什么 unwrap 后的 ACK 不能超过 `next_seqno_abs`？因为发送端不能接受对方确认自己从未发送过的序号位置。
 
 窗口信息与 ACK 推进是两件事。即使 ACK 没变，对方也可能因为应用读取而通告更大的窗口；发送端应更新窗口，但不能因此假装旧数据获得了新确认。
 
@@ -629,24 +631,24 @@ ACK 是否真正推进？
 
 沿用前面的场景：
 
-| 事件 | `acknowledged` | `next_seqno` | `bytes_in_flight` | outstanding | timer |
+| 事件 | `acknowledged_abs` | `next_seqno_abs` | `bytes_in_flight` | outstanding | timer |
 | --- | ---: | ---: | ---: | --- | --- |
-| 初始 | 1000 | 1000 | 0 | 空 | 停止 |
-| 发送 SYN | 1000 | 1001 | 1 | SYN | 启动 |
-| 收到 ACK 1001 | 1001 | 1001 | 0 | 空 | 停止 |
-| 发送 ABC | 1001 | 1004 | 3 | ABC | 启动 |
-| 发送 D | 1001 | 1005 | 4 | ABC、D | 继续，不归零 |
-| 收到 ACK 1004 | 1004 | 1005 | 1 | D | 从零重启 |
-| 发送 EFG | 1004 | 1008 | 4 | D、EFG | 继续 |
-| 超时，重传 D | 1004 | 1008 | 4 | D、EFG | 归零，RTO 加倍 |
-| 收到 ACK 1008 | 1008 | 1008 | 0 | 空 | 停止 |
+| 初始 | 0 | 0 | 0 | 空 | 停止 |
+| 发送 SYN | 0 | 1 | 1 | SYN | 启动 |
+| 收到 ACK 1001 | 1 | 1 | 0 | 空 | 停止 |
+| 发送 ABC | 1 | 4 | 3 | ABC | 启动 |
+| 发送 D | 1 | 5 | 4 | ABC、D | 继续，不归零 |
+| 收到 ACK 1004 | 4 | 5 | 1 | D | 从零重启 |
+| 发送 EFG | 4 | 8 | 4 | D、EFG | 继续 |
+| 超时，重传 D | 4 | 8 | 4 | D、EFG | 归零，RTO 加倍 |
+| 收到 ACK 1008 | 8 | 8 | 0 | 空 | 停止 |
 
 观察三个不变量：
 
 ```text
-acknowledged <= next_seqno
-bytes_in_flight = next_seqno - acknowledged
-重传旧段不会推进 next_seqno
+acknowledged_abs <= next_seqno_abs
+bytes_in_flight = next_seqno_abs - acknowledged_abs
+重传旧段不会推进 next_seqno_abs
 ```
 
 ---
@@ -756,9 +758,10 @@ Unity 中不要在主线程同步等待阻塞式网络写入；但具体 API 与
 三个核心量：
 
 ```text
-ACK：左边界，已经连续确认到哪里
+ACK：线上携带的 32 位确认边界
+acknowledged_abs：ACK 解开后保存在发送端内部的 64 位确认边界
 window：允许范围有多宽
-next_seqno：新数据已经分配到哪里
+next_seqno_abs：新内容在内部绝对序号中已经分配到哪里
 ```
 
 ---
@@ -768,8 +771,8 @@ next_seqno：新数据已经分配到哪里
 请先合上本课或滚动到看不到正文的位置，再用自己的话回答。暂时不要求写代码。
 
 1. 为什么 TCP 发送端不能在 `send()` 后立刻忘掉刚发送的数据？请分别从丢包和 ACK 含义解释。
-2. `ACK=1004, window=4` 表示发送端允许使用哪个半开序号范围？如果 `next_seqno=1006`，还能发送几个序号位置？
-3. 分别用一句话说明 `acknowledged`、`next_seqno` 和 `bytes_in_flight`。写出三者在本课模型中的关系。
+2. `ACK=1004, window=4` 表示发送端允许使用哪个半开线上序号范围？如果下一份新内容的线上 SEQ 是 1006，还能发送几个序号位置？
+3. 分别用一句话说明线上 `ACK`、内部 `acknowledged_abs`、`next_seqno_abs` 和 `bytes_in_flight`。写出后三者在本课模型中的关系。
 4. 已发送 `[1001,1004)` 的 `ABC` 和 `[1004,1006)` 的 `DE`。收到累计 `ACK=1004` 后，哪些内容可以从 outstanding 删除？哪些仍要保留？
 5. 为什么后续每发送一个新段时，不应该把最旧未确认段的计时器归零？
 6. 当前 `RTO=1000 ms`，连续两次超时且期间没有新 ACK。非零窗口下两次分别重传谁？两次超时后的 RTO 依次是多少？`bytes_in_flight` 会不会因为重传翻倍？
@@ -777,12 +780,12 @@ next_seqno：新数据已经分配到哪里
 8. 发送端当前已发送 SYN 和 5 个 payload 字节，尚未发送 FIN，也没有任何确认。`bytes_in_flight` 是多少？
 9. 一个段同时包含 `SYN=1`、payload=`ABC`、`FIN=1`。它在 TCP 序号空间中占几个位置？应用数据有几个字节？
 10. 应用 Writer 已关闭，ByteStream 还有 `XYZ` 未取出，而发送窗口只剩 2 个位置。发送端能不能立刻发送 `XYZ+FIN`？说明一种合理分段过程。
-11. 为什么重传一个旧段不会推进 `next_seqno`？
+11. 为什么重传一个旧段不会推进 `next_seqno_abs`？
 12. 接收窗口为 0 时，如果发送端永远什么都不发，双方可能怎样僵住？零窗口探测解决什么问题？
 13. 区分接收窗口、MSS 和以后要学的拥塞窗口：它们分别限制什么？
 14. 把以下事件按合理因果顺序排列：`保存 outstanding`、`读取发送 ByteStream`、`制作带 SEQ 的段`、`启动或保持计时器`、`交给 IP`。
 15. Unity 的 `WriteAsync` 已完成，为什么仍不能证明远端游戏逻辑处理了消息？TCP ACK 最多能证明到哪里？
-16. 附加推演：当前 `acknowledged=20`、`next_seqno=25`、窗口为 8。此时还能发送几个序号位置？随后收到新 `ACK=23, window=4`，在 `next_seqno` 不变时还能发送几个？
+16. 附加推演：当前内部 `acknowledged_abs=20`、`next_seqno_abs=25`、窗口为 8。此时还能发送几个序号位置？随后收到一份 unwrap 后值为 23 的新 ACK，且 `window=4`，在 `next_seqno_abs` 不变时还能发送几个？
 
 ---
 

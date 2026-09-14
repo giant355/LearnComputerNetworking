@@ -64,12 +64,12 @@
   <section class="card event" aria-live="polite">
     <strong id="eventTitle">发送端尚未开始</strong>
     <p id="eventBody">点击“下一步”，先发送占用一个序号位置的 SYN。</p>
-    <p class="muted" id="reason">观察：新发送会推进 next_seqno；重传不会。</p>
+    <p class="muted" id="reason">观察：图中为便于阅读显示线上坐标；代码内部会用减去 ISN 后的 64 位绝对位置。新发送会推进位置，重传不会。</p>
   </section>
 
   <section class="metrics" aria-label="发送端状态">
-    <div class="metric"><span>累计确认位置</span><strong id="ack">1000</strong></div>
-    <div class="metric"><span>next_seqno</span><strong id="nextSeq">1000</strong></div>
+    <div class="metric"><span>ACK 边界（线上显示）</span><strong id="ack">1000</strong></div>
+    <div class="metric"><span>下一新 SEQ（线上显示）</span><strong id="nextSeq">1000</strong></div>
     <div class="metric"><span>bytes_in_flight</span><strong id="flight">0</strong></div>
     <div class="metric"><span>当前有效发送窗口</span><strong id="window">1*</strong></div>
     <div class="metric"><span>当前 RTO</span><strong id="rto">1000 ms</strong></div>
