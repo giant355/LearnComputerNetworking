@@ -92,7 +92,7 @@ flowchart LR
 | 12 | [[12_乱序子串重组|乱序子串重组器]] | 2.2–3 小时 | 基本掌握；2026-09-14 复习 |
 | 3 | [[Labs/Lab3_TinyReassembler/README|TinyReassembler]] | 2–3.5 小时（电脑旁） | 已完成；8/8 测试通过 |
 | 13 | [[13_TCP接收端_序号_ACK与窗口|TCP 接收端：序号、ACK 与接收窗口]] | 2.5–3.5 小时 | 基本掌握；2026-09-15 复习 |
-| 4 | [[Labs/Lab4_TinyTCPReceiver/README|Tiny TCP Receiver]] | 2.5–4 小时（电脑旁） | 已开放；等待实现 |
+| 4 | [[Labs/Lab4_TinyTCPReceiver/README|Tiny TCP Receiver]] | 2.5–4 小时（电脑旁） | 已完成；10/10 测试通过 |
 
 ## 使用说明
 
