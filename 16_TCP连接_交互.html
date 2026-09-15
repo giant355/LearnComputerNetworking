@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TCP 连接：握手、双向数据与关闭</title>
+<style>
+:root{color-scheme:light dark;--bg:#f4f1e8;--panel:#fffdf7;--ink:#18201d;--muted:#65706a;--line:#cbd3cc;--client:#2563eb;--server:#0f8a68;--warm:#d97706;--danger:#c2413b;--soft:#e8ece8;--shadow:0 12px 32px rgba(34,45,40,.12)}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 15% 0%,rgba(37,99,235,.09),transparent 33%),radial-gradient(circle at 85% 0%,rgba(15,138,104,.1),transparent 31%),var(--bg);color:var(--ink);font:16px/1.55 system-ui,"Microsoft YaHei",sans-serif}.app{width:min(1060px,calc(100% - 28px));margin:24px auto 40px}.top{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:16px}.eyebrow{color:var(--muted);font-size:13px;letter-spacing:.08em;text-transform:uppercase}.top h1{font-size:clamp(24px,4vw,38px);line-height:1.15;margin:5px 0 7px}.top p{margin:0;color:var(--muted)}.step-number{flex:0 0 auto;padding:8px 12px;border:1px solid var(--line);border-radius:999px;background:color-mix(in srgb,var(--panel) 88%,transparent);font-variant-numeric:tabular-nums}.phasebar{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px}.phase{padding:9px 10px;text-align:center;border-radius:10px;background:var(--soft);color:var(--muted);font-size:14px;font-weight:700}.phase.active{background:var(--ink);color:var(--panel)}.stage{background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}.hosts{display:grid;grid-template-columns:1fr minmax(230px,.85fr) 1fr;gap:16px;align-items:stretch;padding:20px}.host{border:1px solid var(--line);border-radius:14px;padding:16px;min-width:0}.host.client{border-top:5px solid var(--client)}.host.server{border-top:5px solid var(--server)}.host-head{display:flex;justify-content:space-between;gap:10px;align-items:center}.host h2{margin:0;font-size:18px}.endpoint{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.state{display:inline-block;margin:12px 0 14px;padding:5px 9px;border-radius:999px;background:var(--soft);font-weight:800;font-size:13px}.client .state{color:var(--client)}.server .state{color:var(--server)}.metrics{display:grid;gap:8px}.metric{display:flex;justify-content:space-between;gap:12px;padding:8px 9px;background:color-mix(in srgb,var(--soft) 60%,transparent);border-radius:8px}.metric span{color:var(--muted);font-size:13px}.metric strong{font-variant-numeric:tabular-nums}.wire{position:relative;min-height:210px;display:flex;align-items:center;justify-content:center}.wire::before{content:"";position:absolute;left:5%;right:5%;top:50%;height:2px;background:repeating-linear-gradient(90deg,var(--line) 0 9px,transparent 9px 15px)}.packet{position:relative;width:100%;padding:12px;border:1px solid var(--line);border-radius:12px;background:var(--panel);box-shadow:0 8px 20px rgba(30,40,35,.1);z-index:1}.packet.none{opacity:.6;text-align:center;color:var(--muted)}.direction{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;font-weight:900}.direction .arrow{font-size:24px;color:var(--warm)}.fields{display:grid;grid-template-columns:repeat(2,1fr);gap:6px}.field{padding:5px 7px;border-radius:7px;background:var(--soft);font-size:12px}.field b{display:block;color:var(--muted);font-weight:600}.event{border-top:1px solid var(--line);padding:18px 20px 20px}.event-top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.event h3{margin:0 0 5px;font-size:20px}.event p{margin:0;color:var(--muted)}.focus{margin-top:14px;padding:11px 13px;border-left:4px solid var(--warm);background:color-mix(in srgb,var(--warm) 9%,var(--panel));font-weight:700}.controls{display:flex;gap:9px;justify-content:center;margin-top:14px}.controls button{appearance:none;border:1px solid var(--line);border-radius:10px;padding:10px 15px;background:var(--panel);color:var(--ink);font:inherit;font-weight:750;cursor:pointer}.controls button.primary{background:var(--ink);color:var(--panel);border-color:var(--ink)}.controls button:disabled{opacity:.4;cursor:not-allowed}.controls button:focus-visible{outline:3px solid color-mix(in srgb,var(--client) 55%,transparent);outline-offset:2px}.hint{text-align:center;margin:9px 0 0;color:var(--muted);font-size:13px}
+@media(max-width:760px){.top{display:block}.step-number{display:inline-block;margin-top:12px}.hosts{grid-template-columns:1fr}.wire{min-height:190px}.phasebar{font-size:12px}.event-top{display:block}.controls{position:static}.controls button{background:var(--panel)}}
+@media(prefers-color-scheme:dark){:root{--bg:#111713;--panel:#19211c;--ink:#eef5ef;--muted:#aab5ad;--line:#39463e;--soft:#253129;--shadow:0 12px 32px rgba(0,0,0,.28);--client:#78a9ff;--server:#62d4ae;--warm:#f4b15a;--danger:#ff8b82}}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="top">
+    <div><div class="eyebrow">Lesson 16 · TCP Connection</div><h1>两个方向，怎样成为一条连接</h1><p>逐步观察握手、捎带 ACK、半关闭与 TIME-WAIT。</p></div>
+    <div class="step-number" id="stepNumber" aria-live="polite">步骤 0 / 12</div>
+  </header>
+
+  <nav class="phasebar" aria-label="连接阶段">
+    <div class="phase active" data-phase="握手">① 三次握手</div>
+    <div class="phase" data-phase="数据">② 双向数据</div>
+    <div class="phase" data-phase="关闭">③ 分方向关闭</div>
+  </nav>
+
+  <section class="stage" aria-label="TCP 连接状态演示">
+    <div class="hosts">
+      <article class="host client">
+        <div class="host-head"><h2>Unity 客户端</h2><span class="endpoint">192.0.2.10:53000</span></div>
+        <div class="state" id="clientState">CLOSED</div>
+        <div class="metrics">
+          <div class="metric"><span>发送方向下一新 SEQ</span><strong id="clientSend">1000</strong></div>
+          <div class="metric"><span>接收方向下一期待值</span><strong id="clientRecv">—</strong></div>
+        </div>
+      </article>
+
+      <div class="wire" aria-live="polite">
+        <div class="packet none" id="packet"><span>尚无在途 TCP 段</span></div>
+      </div>
+
+      <article class="host server">
+        <div class="host-head"><h2>游戏服务器</h2><span class="endpoint">198.51.100.20:7777</span></div>
+        <div class="state" id="serverState">LISTEN</div>
+        <div class="metrics">
+          <div class="metric"><span>发送方向下一新 SEQ</span><strong id="serverSend">7000</strong></div>
+          <div class="metric"><span>接收方向下一期待值</span><strong id="serverRecv">—</strong></div>
+        </div>
+      </article>
+    </div>
+
+    <div class="event">
+      <div class="event-top"><div><h3 id="eventTitle">服务器正在监听</h3><p id="eventBody">四元组尚未对应一条已建立连接，双方也还不知道对方的 ISN。</p></div></div>
+      <div class="focus" id="focus">观察：一条连接将包含两个独立的序号方向。</div>
+    </div>
+  </section>
+
+  <div class="controls">
+    <button id="reset">重置</button>
+    <button id="prev">上一步</button>
+    <button class="primary" id="next">下一步</button>
+  </div>
+  <p class="hint">也可以使用键盘 ←、→ 和 Home。</p>
+</main>
+
+<script>
+const steps=[
+{phase:"握手",title:"服务器正在监听",body:"四元组尚未对应一条已建立连接，双方也还不知道对方的 ISN。",focus:"观察：一条连接将包含两个独立的序号方向。",cs:"CLOSED",ss:"LISTEN",cn:"1000",cr:"—",sn:"7000",sr:"—"},
+{phase:"握手",title:"① 客户端发送 SYN",body:"客户端公布 A→B 方向的 ISN=1000，并等待服务器确认。",focus:"SYN 占一个序号位置，所以客户端下一新 SEQ 变成 1001。",cs:"SYN-SENT",ss:"LISTEN",cn:"1001",cr:"—",sn:"7000",sr:"—",dir:"right",from:"客户端",to:"服务器",seq:"1000",ack:"—",flags:"SYN",payload:"空"},
+{phase:"握手",title:"② 服务器回复 SYN+ACK",body:"服务器收到客户端 SYN，公布自己的 ISN=7000，同时确认客户端 SYN。",focus:"SEQ=7000 属于 B→A；ACK=1001 确认相反的 A→B。",cs:"SYN-SENT",ss:"SYN-RECEIVED",cn:"1001",cr:"—",sn:"7001",sr:"1001",dir:"left",from:"服务器",to:"客户端",seq:"7000",ack:"1001",flags:"SYN · ACK",payload:"空"},
+{phase:"握手",title:"③ 客户端发送最终 ACK",body:"客户端收到了服务器 SYN，确认号 7001 表示下一项期待服务器位置 7001。",focus:"纯 ACK 不占序号位置，客户端下一新 SEQ 仍是 1001。",cs:"ESTABLISHED",ss:"SYN-RECEIVED",cn:"1001",cr:"7001",sn:"7001",sr:"1001",dir:"right",from:"客户端",to:"服务器",seq:"1001",ack:"7001",flags:"ACK",payload:"空"},
+{phase:"握手",title:"双方进入 ESTABLISHED",body:"服务器收到最终 ACK。两个方向的序号原点现在都已交换并确认。",focus:"握手建立的是两端 TCP 状态，不是沿途路由器中的固定线路。",cs:"ESTABLISHED",ss:"ESTABLISHED",cn:"1001",cr:"7001",sn:"7001",sr:"1001"},
+{phase:"数据",title:"客户端发送 ABC",body:"客户端从自己的发送方向位置 1001 开始发送三个字节，同时继续确认服务器 SYN。",focus:"这份段的 SEQ 和 ACK 描述相反方向。",cs:"ESTABLISHED",ss:"ESTABLISHED",cn:"1004",cr:"7001",sn:"7001",sr:"1001",dir:"right",from:"客户端",to:"服务器",seq:"1001",ack:"7001",flags:"ACK",payload:"ABC"},
+{phase:"数据",title:"服务器回复 OK，并捎带确认",body:"服务器用 payload=OK 发送本方向数据，同时用 ACK=1004 确认客户端 ABC。",focus:"一份段完成两件事，但两个方向的序号空间仍然独立。",cs:"ESTABLISHED",ss:"ESTABLISHED",cn:"1004",cr:"7001",sn:"7003",sr:"1004",dir:"left",from:"服务器",to:"客户端",seq:"7001",ack:"1004",flags:"ACK",payload:"OK"},
+{phase:"数据",title:"客户端收到 OK",body:"客户端接收方向推进到 7003；服务器已通过上一份段确认客户端到 1004。",focus:"TCP ACK 证明连续接收，不证明游戏逻辑已经处理消息。",cs:"ESTABLISHED",ss:"ESTABLISHED",cn:"1004",cr:"7003",sn:"7003",sr:"1004"},
+{phase:"关闭",title:"客户端发送 FIN",body:"客户端关闭 A→B 方向。FIN 使用 SEQ=1004，并占用一个序号位置。",focus:"客户端发送方向结束，不等于服务器发送方向也结束。",cs:"FIN-WAIT-1",ss:"ESTABLISHED",cn:"1005",cr:"7003",sn:"7003",sr:"1004",dir:"right",from:"客户端",to:"服务器",seq:"1004",ack:"7003",flags:"FIN · ACK",payload:"空"},
+{phase:"关闭",title:"服务器确认 FIN，仍可发送 BYE",body:"服务器接收方向看到 EOF，但自己的发送 Writer 仍开放，于是发送 BYE。",focus:"这就是半关闭：A→B 已结束，B→A 仍可传输。",cs:"FIN-WAIT-1",ss:"CLOSE-WAIT",cn:"1005",cr:"7003",sn:"7006",sr:"1005",dir:"left",from:"服务器",to:"客户端",seq:"7003",ack:"1005",flags:"ACK",payload:"BYE"},
+{phase:"关闭",title:"服务器也发送 FIN",body:"客户端收到 ACK 与 BYE 后进入 FIN-WAIT-2；服务器完成自己的发送方向，FIN 使用位置 7006。",focus:"服务器 FIN 占 [7006,7007)，所以客户端将确认 7007。",cs:"FIN-WAIT-2",ss:"LAST-ACK",cn:"1005",cr:"7006",sn:"7007",sr:"1005",dir:"left",from:"服务器",to:"客户端",seq:"7006",ack:"1005",flags:"FIN · ACK",payload:"空"},
+{phase:"关闭",title:"客户端发送最终 ACK",body:"客户端确认服务器 FIN，然后进入 TIME-WAIT；服务器仍等待这份 ACK。",focus:"若最终 ACK 丢失，服务器会重传 FIN，TIME-WAIT 中的客户端仍能再次确认。",cs:"TIME-WAIT",ss:"LAST-ACK",cn:"1005",cr:"7007",sn:"7007",sr:"1005",dir:"right",from:"客户端",to:"服务器",seq:"1005",ack:"7007",flags:"ACK",payload:"空"},
+{phase:"关闭",title:"正常关闭完成",body:"服务器收到最终 ACK 后删除连接；客户端等待一段时间，让旧重复段退出网络。",focus:"TIME-WAIT 同时保护最终确认和未来可能复用的同一四元组。",cs:"TIME-WAIT",ss:"CLOSED",cn:"1005",cr:"7007",sn:"7007",sr:"1005"}
+];
+let index=0;
+const $=id=>document.getElementById(id);
+function packetMarkup(step){if(!step.dir)return '<span>此步骤没有新的在途 TCP 段</span>';const arrow=step.dir==="right"?"→":"←";return `<div class="direction"><span>${step.from}</span><span class="arrow" aria-hidden="true">${arrow}</span><span>${step.to}</span></div><div class="fields"><div class="field"><b>SEQ</b>${step.seq}</div><div class="field"><b>ACK</b>${step.ack}</div><div class="field"><b>Flags</b>${step.flags}</div><div class="field"><b>Payload</b>${step.payload}</div></div>`}
+function render(){const s=steps[index];$("stepNumber").textContent=`步骤 ${index} / ${steps.length-1}`;$("clientState").textContent=s.cs;$("serverState").textContent=s.ss;$("clientSend").textContent=s.cn;$("clientRecv").textContent=s.cr;$("serverSend").textContent=s.sn;$("serverRecv").textContent=s.sr;$("eventTitle").textContent=s.title;$("eventBody").textContent=s.body;$("focus").textContent=s.focus;$("packet").className=`packet${s.dir?"":" none"}`;$("packet").innerHTML=packetMarkup(s);document.querySelectorAll(".phase").forEach(el=>el.classList.toggle("active",el.dataset.phase===s.phase));$("prev").disabled=index===0;$("next").disabled=index===steps.length-1;}
+$("reset").addEventListener("click",()=>{index=0;render()});$("prev").addEventListener("click",()=>{if(index>0){index--;render()}});$("next").addEventListener("click",()=>{if(index<steps.length-1){index++;render()}});document.addEventListener("keydown",event=>{if(event.key==="ArrowLeft")$("prev").click();if(event.key==="ArrowRight")$("next").click();if(event.key==="Home")$("reset").click()});render();
+</script>
+</body>
+</html>

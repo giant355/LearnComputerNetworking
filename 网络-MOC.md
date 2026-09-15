@@ -25,9 +25,10 @@
 18. [[Labs/Lab4_TinyTCPReceiver/README|Lab 4：Tiny TCP Receiver]] 已完成，序号回绕、接收重组、累计 ACK 与窗口共十组测试通过。
 19. [[14_TCP发送端_滑动窗口与重传|第 14 课：TCP 发送端——滑动窗口、超时与重传]] 已完成检查站，达到基本掌握。
 20. [[Labs/Lab5_TinyTCPSender/README|Lesson 15 / Lab 5：Tiny TCP Sender]] 已完成，十一组测试全部通过，实际约 4 小时。
+21. 当前课程：[[16_TCP连接_握手双向通信与关闭|第 16 课：TCP 连接、握手、双向通信与关闭]]，配有三阶段逐步交互。
 
 > [!important]
-> 第 14 课与 Lab 5 已完成。下一步先结合一段具体收发过程口述发送端状态变化，再进入后续课程。
+> 第 14 课与 Lab 5 已完成。第 16 课把每端的 Sender 和 Receiver 拼成全双工连接，再从实际困难推导握手、半关闭与 TIME-WAIT。
 
 ## 学习记录
 
@@ -98,6 +99,7 @@ flowchart LR
 | 4 | [[Labs/Lab4_TinyTCPReceiver/README|Tiny TCP Receiver]] | 2.5–4 小时（电脑旁） | 已完成；10/10 测试通过 |
 | 14 | [[14_TCP发送端_滑动窗口与重传|TCP 发送端：滑动窗口、超时与重传]] | 2.5–3.25 小时 | 基本掌握；2026-09-16 复习 |
 | 5 | [[Labs/Lab5_TinyTCPSender/README|Tiny TCP Sender]] | 3–5 小时（电脑旁） | 已完成；11/11；实际约 4 小时 |
+| 16 | [[16_TCP连接_握手双向通信与关闭|TCP 连接：握手、双向通信与关闭]] | 2.5–3.25 小时 | 已发布；等待检查站 |
 
 ## 使用说明
 
