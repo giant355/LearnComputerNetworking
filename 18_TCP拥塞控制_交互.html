@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 18 课 · TCP 拥塞窗口变化</title>
+<style>
+:root{color-scheme:light dark;--bg:#f7f7f2;--paper:#fff;--ink:#172c31;--muted:#596b70;--line:#c6d2d1;--brand:#126961;--tint:#e3f1ed;--warn:#a3461c;--warn-bg:#fff0e5;--dim:#edf0ec}
+@media(prefers-color-scheme:dark){:root{--bg:#122024;--paper:#182a2f;--ink:#e1eeeb;--muted:#b2c4c4;--line:#496166;--brand:#90d9cb;--tint:#264a45;--warn:#ffc397;--warn-bg:#472e23;--dim:#23353a}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.7 system-ui,"Microsoft YaHei",sans-serif}main{max-width:980px;margin:auto;padding:28px 24px 48px}h1{font-size:clamp(25px,4vw,37px);line-height:1.3;margin:5px 0 10px}h2{font-size:22px;margin:0 0 8px}.eyebrow{color:var(--brand);font-size:14px;letter-spacing:1px}.muted{color:var(--muted)}a{color:var(--brand);text-underline-offset:3px}.rule{margin:22px 0;padding:12px 0;border-block:1px solid var(--line)}.controls{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:18px 0}button{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 14px;min-height:44px;cursor:pointer}button.primary{background:var(--brand);border-color:var(--brand);color:var(--paper)}@media(prefers-color-scheme:dark){button.primary{color:#122024}}button:disabled{opacity:.5;cursor:default}button:focus-visible,a:focus-visible{outline:3px solid var(--brand);outline-offset:3px}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:18px 0}.stat{padding:12px 14px;background:var(--paper);border:1px solid var(--line);border-radius:8px}.stat span{display:block;color:var(--muted);font-size:14px}.stat strong{display:block;font-size:27px;font-variant-numeric:tabular-nums}.event{min-height:78px;padding:13px 16px;margin:18px 0;border-left:4px solid var(--brand);background:var(--tint)}.event.loss{border-color:var(--warn);background:var(--warn-bg)}.bars{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));align-items:end;gap:7px;height:230px;margin:24px 0 8px;padding-top:28px;border-bottom:1px solid var(--line)}.bar-wrap{height:100%;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;min-width:0}.bar{width:100%;max-width:48px;min-height:4px;background:var(--brand);border-radius:4px 4px 0 0;transition:height .25s ease}.bar.loss{background:var(--warn)}.bar-value{font-size:13px;font-variant-numeric:tabular-nums;margin-bottom:3px}.bar-label{font-size:12px;color:var(--muted);height:27px;white-space:nowrap}.threshold{height:10px;background:repeating-linear-gradient(90deg,var(--warn) 0 8px,transparent 8px 13px);margin:2px 0 4px}.legend{display:flex;flex-wrap:wrap;gap:16px;color:var(--muted);font-size:14px}.swatch{display:inline-block;width:14px;height:14px;margin-right:5px;vertical-align:-2px;background:var(--brand)}.swatch.loss{background:var(--warn)}.gap-flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin:15px 0}.segment{padding:12px 7px;text-align:center;background:var(--tint);border:1px solid var(--brand);border-radius:6px;font-variant-numeric:tabular-nums}.segment.missing{background:var(--warn-bg);border-color:var(--warn);color:var(--warn)}.ack-list{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}.ack{padding:7px 11px;border-bottom:3px solid var(--brand);background:var(--paper);font-variant-numeric:tabular-nums}.table-wrap{overflow-x:auto;margin:20px 0}table{width:100%;border-collapse:collapse;font-variant-numeric:tabular-nums}th,td{padding:9px 11px;border-bottom:1px solid var(--line);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}tr.current{background:var(--tint)}code{font:0.94em ui-monospace,Consolas,monospace;overflow-wrap:anywhere}footer{border-top:1px solid var(--line);padding-top:14px;margin-top:28px;color:var(--muted);font-size:14px}@media(max-width:560px){main{padding:18px 14px 34px}.stats{gap:7px}.stat{padding:9px 7px}.stat strong{font-size:22px}.bars{gap:3px;height:195px}.bar-label{font-size:10px;transform:rotate(-50deg);transform-origin:center;height:42px}.gap-flow{grid-template-columns:repeat(2,minmax(0,1fr))}th,td{padding:7px 8px}.controls button{flex:1}}
+.bar-wrap{--label-h:27px;position:relative}.threshold{position:absolute;left:0;bottom:calc(var(--label-h) + var(--threshold) * 12.5px);width:100%;height:3px;margin:0}@media(max-width:560px){.bar-wrap{--label-h:42px}.bars{height:210px}}
+@media(prefers-reduced-motion:reduce){.bar{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="eyebrow">计算机网络 · LESSON 18</div><h1>让拥塞窗口试探、回退、再试探</h1><p class="muted">同一套 Reno 风格教学规则：MSS=1000 byte，初始 cwnd=1 MSS，初始 ssthresh=8 MSS。</p><a href="18_TCP拥塞控制_慢启动与拥塞避免.md">返回第 18 课正文</a></header>
+<section aria-labelledby="trace-title">
+<div class="rule"><strong>规则：</strong><code>cwnd &lt; ssthresh</code> 时慢启动；否则拥塞避免。超时把窗口降到 1 MSS；三个重复 ACK 在恢复完成后把窗口降到阈值。本交互按 RTT 粒度展示，不模拟每一份 ACK。</div>
+<h2 id="trace-title">一条预设状态轨迹</h2>
+<div class="controls"><button class="primary" type="button" id="next">下一事件</button><button type="button" id="reset">重置</button><span id="step-label" aria-live="polite"></span></div>
+<div id="event" class="event" role="status" aria-live="polite"></div>
+<div class="stats"><div class="stat"><span>拥塞窗口 cwnd</span><strong id="cwnd"></strong></div><div class="stat"><span>慢启动阈值 ssthresh</span><strong id="ssthresh"></strong></div><div class="stat"><span>下一阶段</span><strong id="phase"></strong></div></div>
+<div id="bars" class="bars" role="img" aria-label="拥塞窗口轨迹"></div>
+<div class="legend"><span><i class="swatch" aria-hidden="true"></i>正常 ACK 后</span><span><i class="swatch loss" aria-hidden="true"></i>丢失响应后</span><span>虚线位置表示当步 ssthresh</span></div>
+<div class="table-wrap" tabindex="0" role="region" aria-label="拥塞窗口状态表，可横向滚动"><table><thead><tr><th>事件</th><th>cwnd / MSS</th><th>ssthresh / MSS</th><th>下一阶段</th></tr></thead><tbody id="history"></tbody></table></div>
+</section>
+<section aria-labelledby="dup-title">
+<h2 id="dup-title">三个相同 ACK 为什么有信息</h2>
+<p>接收端仍期待从 1001 开始的字节。第一个段丢失，后面三个段先到达：</p>
+<div class="gap-flow" aria-label="数据段到达状态"><div class="segment missing">[1001,2001)<br>丢失</div><div class="segment">[2001,3001)<br>到达</div><div class="segment">[3001,4001)<br>到达</div><div class="segment">[4001,5001)<br>到达</div></div>
+<div class="ack-list" aria-label="接收端返回三个重复确认"><span class="ack">ACK=1001</span><span class="ack">ACK=1001</span><span class="ack">ACK=1001</span></div>
+<p>累计位置没有前进，所以没有重复释放同一份 flight；但后续段确实到达，说明缺口可能存在，而且网络仍在把一些数据送到接收端。经典 TCP 因此可以快速重传缺失段，而不必等待 RTO。</p>
+</section>
+<footer>教学边界：轨迹把快速恢复压缩为“恢复完成后的 cwnd”；不展示临时的窗口膨胀。现代系统可能使用更大的初始窗口和 CUBIC 等算法。</footer>
+</main>
+<script>
+(() => {
+  'use strict';
+  const states = [
+    {event:'初始：对路径了解很少，从 1 MSS 开始。',cwnd:1,ssthresh:8,phase:'慢启动'},
+    {event:'第 1 个正常 RTT：新 ACK 持续返回，慢启动使窗口约翻倍。',cwnd:2,ssthresh:8,phase:'慢启动'},
+    {event:'第 2 个正常 RTT：继续快速试探。',cwnd:4,ssthresh:8,phase:'慢启动'},
+    {event:'第 3 个正常 RTT：到达阈值，下一轮改用拥塞避免。',cwnd:8,ssthresh:8,phase:'拥塞避免'},
+    {event:'第 4 个正常 RTT：拥塞避免每 RTT 约增加 1 MSS。',cwnd:9,ssthresh:8,phase:'拥塞避免'},
+    {event:'第 5 个正常 RTT：继续温和试探。',cwnd:10,ssthresh:8,phase:'拥塞避免'},
+    {event:'三个重复 ACK，FlightSize=10：快速重传；恢复完成后窗口减至 5。',cwnd:5,ssthresh:5,phase:'拥塞避免',loss:true},
+    {event:'恢复后的正常 RTT：拥塞避免增加 1 MSS。',cwnd:6,ssthresh:5,phase:'拥塞避免'},
+    {event:'RTO 超时，FlightSize=6：阈值降至 3，窗口降至 1，重新探路。',cwnd:1,ssthresh:3,phase:'慢启动',loss:true},
+    {event:'超时后的第 1 个正常 RTT：仍低于阈值，慢启动。',cwnd:2,ssthresh:3,phase:'慢启动'},
+    {event:'再一个正常 RTT：到达阈值，下一轮拥塞避免。',cwnd:3,ssthresh:3,phase:'拥塞避免'},
+    {event:'再一个正常 RTT：拥塞避免增加 1 MSS。',cwnd:4,ssthresh:3,phase:'拥塞避免'}
+  ];
+  const $ = id => document.getElementById(id);
+  let index = 0;
+  function render() {
+    const state = states[index];
+    $('step-label').textContent = `第 ${index} / ${states.length - 1} 步`;
+    $('next').disabled = index === states.length - 1;
+    $('event').textContent = state.event;
+    $('event').className = state.loss ? 'event loss' : 'event';
+    $('cwnd').textContent = `${state.cwnd} MSS`;
+    $('ssthresh').textContent = `${state.ssthresh} MSS`;
+    $('phase').textContent = state.phase;
+    $('bars').replaceChildren();
+    const max = 12;
+    states.forEach((item,i) => {
+      const wrap = document.createElement('div'); wrap.className = 'bar-wrap';
+      const value = document.createElement('div'); value.className = 'bar-value'; value.textContent = i <= index ? item.cwnd : '';
+      const threshold = document.createElement('div'); threshold.className = 'threshold'; threshold.style.setProperty('--threshold', item.ssthresh); threshold.style.visibility = i <= index ? 'visible' : 'hidden';
+      const bar = document.createElement('div'); bar.className = item.loss ? 'bar loss' : 'bar'; bar.style.height = `${i <= index ? item.cwnd / max * 150 : 4}px`; bar.style.opacity = i <= index ? '1' : '.18';
+      const label = document.createElement('div'); label.className = 'bar-label'; label.textContent = i <= index ? `${i}` : '';
+      wrap.append(value,threshold,bar,label); $('bars').append(wrap);
+    });
+    $('bars').setAttribute('aria-label',`当前第 ${index} 步，cwnd ${state.cwnd} MSS，ssthresh ${state.ssthresh} MSS，${state.phase}`);
+    $('history').innerHTML = states.slice(0,index+1).map((item,i) => `<tr class="${i===index?'current':''}"><td>${i}. ${item.event.split('：')[0]}</td><td>${item.cwnd}</td><td>${item.ssthresh}</td><td>${item.phase}</td></tr>`).join('');
+  }
+  $('next').addEventListener('click',() => { if(index < states.length-1){index++;render();} });
+  $('reset').addEventListener('click',() => {index=0;render();});
+  render();
+})();
+</script>
+</body>
+</html>
