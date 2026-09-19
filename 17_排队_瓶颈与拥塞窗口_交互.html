@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>第 17 课 · 排队与发送额度</title>
+<style>
+:root { color-scheme: light dark; --bg:#f7f7f2; --paper:#fff; --ink:#172c31; --muted:#54686d; --line:#c8d4d3; --brand:#126961; --tint:#e4f1ed; --warn:#9c421a; --warning-bg:#fff0e5; }
+@media (prefers-color-scheme:dark) { :root { --bg:#122024; --paper:#182a2f; --ink:#e1eeeb; --muted:#b1c4c4; --line:#496166; --brand:#90d9cb; --tint:#264a45; --warn:#ffc397; --warning-bg:#472e23; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.7 system-ui,"Microsoft YaHei",sans-serif; }
+main { max-width:1000px; margin:auto; padding:28px 24px 48px; }
+h1 { font-size:clamp(24px,4vw,36px); line-height:1.35; margin:5px 0 10px; }
+h2 { font-size:22px; margin:0 0 10px; }
+h3 { font-size:16px; margin:0 0 8px; }
+p { margin:8px 0 14px; }
+a { color:var(--brand); text-underline-offset:3px; }
+.eyebrow { color:var(--brand); font-size:14px; letter-spacing:1px; }
+.subtle { color:var(--muted); }
+.navigation,.controls { display:flex; flex-wrap:wrap; gap:10px; align-items:center; }
+.navigation { margin:22px 0; padding-bottom:18px; border-bottom:1px solid var(--line); }
+button,select { font:inherit; color:var(--ink); background:var(--paper); border:1px solid var(--line); border-radius:7px; padding:8px 13px; min-height:44px; cursor:pointer; }
+button[aria-pressed="true"],button.primary { background:var(--brand); color:var(--paper); border-color:var(--brand); }
+@media (prefers-color-scheme:dark) { button[aria-pressed="true"],button.primary { color:#122024; } }
+button:disabled { opacity:.5; cursor:default; }
+button:focus-visible,select:focus-visible,a:focus-visible { outline:3px solid var(--brand); outline-offset:3px; }
+.controls { margin:18px 0; }
+.controls label { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.rule { padding:12px 0; border-block:1px solid var(--line); }
+.stats { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; margin:20px 0; }
+.stat { padding:12px 14px; background:var(--paper); border:1px solid var(--line); border-radius:8px; }
+.stat span { display:block; color:var(--muted); font-size:14px; }
+.stat strong { display:block; font-size:27px; font-variant-numeric:tabular-nums; }
+.queue { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:8px; margin:12px 0; }
+.packet { min-height:62px; display:flex; flex-direction:column; align-items:center; justify-content:center; border:1px dashed var(--line); border-radius:6px; font-variant-numeric:tabular-nums; color:var(--muted); }
+.packet.full { background:var(--tint); border:1px solid var(--brand); color:var(--ink); }
+.packet small { font-size:12px; }
+.event { min-height:70px; margin:20px 0 12px; padding:13px 16px; border-left:4px solid var(--brand); background:var(--tint); overflow-wrap:anywhere; }
+.event.warning { border-color:var(--warn); background:var(--warning-bg); }
+.table-wrap { overflow-x:auto; margin:16px 0; }
+table { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+th,td { padding:9px 12px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }
+th { font-weight:600; }
+th:first-child,td:first-child { text-align:left; }
+caption { text-align:left; font-weight:600; margin-bottom:5px; }
+code { font:0.95em ui-monospace,Consolas,monospace; overflow-wrap:anywhere; }
+.formula { padding:12px 0; overflow-wrap:anywhere; }
+.track { display:flex; width:100%; min-height:54px; margin:12px 0 6px; border:1px solid var(--line); border-radius:6px; overflow:hidden; background:var(--paper); }
+.track-part { display:flex; align-items:center; justify-content:center; text-align:center; min-width:0; padding:4px; font-size:14px; }
+.track-part.used { background:var(--tint); }
+.track-part.excess { background:var(--warning-bg); color:var(--warn); }
+.track-part.free { color:var(--muted); }
+.legend { display:flex; flex-wrap:wrap; gap:16px; font-size:14px; color:var(--muted); }
+.swatch { display:inline-block; width:13px; height:13px; margin-right:5px; border:1px solid var(--line); }
+.swatch.used { background:var(--tint); }.swatch.excess { background:var(--warning-bg); }.swatch.free { background:var(--paper); }
+.readout { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px 24px; margin:16px 0; }
+.readout div { border-bottom:1px solid var(--line); padding:8px 0; overflow-wrap:anywhere; }
+.readout dt { color:var(--muted); font-size:14px; }.readout dd { margin:0; font-size:20px; font-variant-numeric:tabular-nums; }
+footer { border-top:1px solid var(--line); margin-top:30px; padding-top:15px; font-size:14px; color:var(--muted); }
+[hidden] { display:none !important; }
+@media(max-width:560px) { main { padding:18px 14px 32px; }.stats { gap:8px; }.stat { padding:10px 8px; }.stat strong { font-size:23px; }.queue { grid-template-columns:repeat(3,minmax(0,1fr)); }.navigation button { flex:1; padding:8px; }.readout { gap:8px 14px; }th,td { padding:8px; }.controls label { width:100%; } }
+</style>
+</head>
+<body>
+<main>
+<header>
+<div class="eyebrow">计算机网络 · LESSON 17</div>
+<h1>对方收得下，路上仍可能堵</h1>
+<p class="subtle">先看出口队列，再看 Sender 的发送额度。两处模型分别对应正文第 3 节和第 9 节。</p>
+<a href="17_排队_瓶颈与拥塞窗口.md">返回第 17 课正文</a>
+</header>
+<nav class="navigation" aria-label="选择观察模型">
+<button type="button" id="show-queue" aria-pressed="true" aria-controls="queue-panel">① 路由器出口队列</button>
+<button type="button" id="show-window" aria-pressed="false" aria-controls="window-panel">② ACK 与发送额度</button>
+</nav>
+<section id="queue-panel" aria-labelledby="queue-title">
+<h2 id="queue-title">进得比出得快，等待就会累积</h2>
+<p class="rule">每步 10 ms：<strong>先发走旧队列最多 2 份，再接纳新到的包</strong>。包大小相同，先进先出，满了就丢弃新包。这里只观察一个路由器出口。</p>
+<div class="controls">
+<label for="arrivals">每步新到 <select id="arrivals"><option value="3">3 份（持续超量）</option><option value="2">2 份（与出口匹配）</option><option value="0">0 份（观察排空）</option></select></label>
+<label for="capacity">队列容量 <select id="capacity"><option value="6">6 份</option><option value="12">12 份</option></select> <span class="subtle">改变容量会重置</span></label>
+</div>
+<div class="controls"><button type="button" class="primary" id="queue-next">推进 10 ms</button><button type="button" id="queue-reset">重置队列</button><span id="queue-time">第 0 步 · 0 ms</span></div>
+<div class="stats">
+<div class="stat"><span>排队 / 容量</span><strong id="queue-count">0 / 6</strong></div>
+<div class="stat"><span>累计发走</span><strong id="queue-sent">0</strong></div>
+<div class="stat"><span>累计丢弃</span><strong id="queue-dropped">0</strong></div>
+</div>
+<h3>等待中的数据报 · 从左到右、从上到下为队首到队尾</h3>
+<div id="queue-slots" class="queue" role="list" aria-label="出口等待队列"></div>
+<div id="queue-event" class="event" role="status" aria-live="polite"></div>
+<p id="queue-invariant" class="subtle"></p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="最近六步队列记录，可横向滚动">
+<table><caption>最近六步</caption><thead><tr><th>步</th><th>先发走</th><th>新到</th><th>接纳</th><th>丢弃</th><th>步末排队</th></tr></thead><tbody id="queue-history"></tbody></table>
+</div>
+<p class="subtle">预测：容量改为 12，持续到达 3 份时，第一次丢包会推迟，但每步最多发走的数量会变吗？在途中改成到达 0 份，队列又怎样变化？</p>
+</section>
+<section id="window-panel" aria-labelledby="window-title" hidden>
+<h2 id="window-title">ACK 释放的是账本中的在途额度</h2>
+<p class="rule">A→B，ISN=8000，握手完成；MSS=1000 byte。B 持续读取并通告 <code>rwnd=10000</code>。先固定 <code>cwnd=4000</code>，末尾再手动降为 2000，观察已有在途量如何处理。</p>
+<div class="controls"><button type="button" class="primary" id="window-next">下一步</button><button type="button" id="window-reset">重置发送过程</button><span id="window-step"></span></div>
+<div id="window-event" class="event" role="status" aria-live="polite"></div>
+<div class="stats">
+<div class="stat"><span>有效上限 / byte</span><strong id="window-limit"></strong></div>
+<div class="stat"><span>已在途 / byte</span><strong id="window-flight"></strong></div>
+<div class="stat"><span>还能新发 / byte</span><strong id="window-allowance"></strong></div>
+</div>
+<div class="formula"><code>还能新发 = max(0, min(rwnd, cwnd) − bytes_in_flight)</code></div>
+<div id="window-track" class="track" role="img" aria-label="发送额度"></div>
+<div class="legend"><span><i class="swatch used" aria-hidden="true"></i>上限内已在途</span><span><i class="swatch excess" aria-hidden="true"></i>超出新上限的旧在途量</span><span><i class="swatch free" aria-hidden="true"></i>可新发</span></div>
+<p class="subtle">条带表示额度，不是字节在网络里的实际位置；总尺度取当前上限与已有在途量中的较大值。</p>
+<dl class="readout">
+<div><dt>acknowledged_abs · 内部绝对位置</dt><dd id="window-ack"></dd></div>
+<div><dt>next_seqno_abs · 内部绝对位置</dt><dd id="window-next-abs"></dd></div>
+<div><dt>已接受的最新累计 ACK · 线上 32 位</dt><dd id="window-wire-ack"></dd></div>
+<div><dt>下一新字节的 SEQ · 线上 32 位</dt><dd id="window-wire-next"></dd></div>
+<div><dt>rwnd · 对端通告 / byte</dt><dd id="window-rwnd"></dd></div>
+<div><dt>cwnd · 本端控制 / byte</dt><dd id="window-cwnd"></dd></div>
+</dl>
+<p id="window-invariant" class="subtle"></p>
+<p class="subtle">这段推演没有 SYN/FIN、重传或零窗口探测；cwnd 的降低是预设事件，不是在此实现了丢包判定或完整拥塞控制。</p>
+</section>
+<footer>离线可用，无需安装依赖。数字沿用正文；先预测、再点击。队列计数表示包的份数，发送窗口计数表示字节，请区分单位。</footer>
+</main>
+<script>
+(() => {
+  'use strict';
+  const $ = id => document.getElementById(id);
+  let queue = [], queueStep = 0, nextPacket = 1, totalArrived = 0, totalSent = 0, totalDropped = 0, queueHistory = [];
+  const packetNames = values => values.length ? values.map(value => 'D' + value).join('、') : '无';
+
+  function renderQueue() {
+    const capacity = Number($('capacity').value);
+    $('queue-time').textContent = `第 ${queueStep} 步 · ${queueStep * 10} ms`;
+    $('queue-count').textContent = `${queue.length} / ${capacity}`;
+    $('queue-sent').textContent = totalSent;
+    $('queue-dropped').textContent = totalDropped;
+    $('queue-slots').replaceChildren();
+    for (let index = 0; index < capacity; index++) {
+      const slot = document.createElement('div');
+      const occupied = index < queue.length;
+      slot.className = occupied ? 'packet full' : 'packet';
+      slot.setAttribute('role', 'listitem');
+      slot.textContent = occupied ? `D${queue[index]}` : '空位';
+      if (occupied && index === 0) { const label = document.createElement('small'); label.textContent = '队首'; slot.append(label); }
+      $('queue-slots').append(slot);
+    }
+    $('queue-history').innerHTML = queueHistory.slice(-6).map(row => `<tr><td>${row.step}</td><td>${row.sent}</td><td>${row.arrived}</td><td>${row.accepted}</td><td>${row.dropped}</td><td>${row.queued}</td></tr>`).join('');
+    $('queue-invariant').textContent = `核对守恒：累计到达 ${totalArrived} = 已发走 ${totalSent} + 正在排队 ${queue.length} + 已丢弃 ${totalDropped}。`;
+  }
+
+  function resetQueue() {
+    queue = []; queueStep = 0; nextPacket = 1; totalArrived = 0; totalSent = 0; totalDropped = 0; queueHistory = [];
+    $('queue-event').className = 'event';
+    $('queue-event').textContent = '初始队列为空。下一步先发走 0 份，再让选定数量的新包进入队列。';
+    renderQueue();
+  }
+
+  function stepQueue() {
+    const capacity = Number($('capacity').value), arrivalCount = Number($('arrivals').value);
+    const sent = queue.splice(0, Math.min(2, queue.length));
+    const accepted = [], dropped = [];
+    for (let count = 0; count < arrivalCount; count++) {
+      const packet = nextPacket++;
+      if (queue.length < capacity) { queue.push(packet); accepted.push(packet); } else dropped.push(packet);
+    }
+    queueStep++; totalArrived += arrivalCount; totalSent += sent.length; totalDropped += dropped.length;
+    queueHistory.push({step:queueStep,sent:sent.length,arrived:arrivalCount,accepted:accepted.length,dropped:dropped.length,queued:queue.length});
+    $('queue-event').className = dropped.length ? 'event warning' : 'event';
+    $('queue-event').textContent = `先发走：${packetNames(sent)}。再接纳：${packetNames(accepted)}。本步丢弃：${packetNames(dropped)}。`;
+    renderQueue();
+  }
+
+  const events = [
+    {kind:'start', text:'握手已经完成，SYN 已确认。内部位置从 1 开始，尚未发送应用数据。'},
+    {kind:'send', bytes:1000, text:'发出第一段新数据：内部 [1,1001)，线上 SEQ=8001。'},
+    {kind:'send', bytes:1000, text:'发出第二段新数据：内部 [1001,2001)，线上 SEQ=9001。'},
+    {kind:'send', bytes:1000, text:'发出第三段新数据：内部 [2001,3001)，线上 SEQ=10001。'},
+    {kind:'send', bytes:1000, text:'发出第四段新数据：内部 [3001,4001)，线上 SEQ=11001。新发送额度用完。'},
+    {kind:'ack', value:1001, text:'收到线上 ACK=9001，unwrap 为内部 1001。新确认 1000 字节，下一新位置不变。'},
+    {kind:'send', bytes:1000, text:'利用释放的额度，发出内部 [4001,5001) 的新数据，线上 SEQ=12001。'},
+    {kind:'ack', value:1001, text:'同一个 ACK=9001 再到一次，窗口不变。累计确认没有推进，不能再释放 1000 字节。'},
+    {kind:'cwnd', value:2000, text:'预设变化：把 cwnd 从 4000 降到 2000。已有 4000 字节在途；它们不会被召回，只是暂时不能新发。'},
+    {kind:'ack', value:3001, text:'收到线上 ACK=11001，unwrap 为内部 3001。新确认 2000 字节，剩余在途恰好等于新上限。'},
+    {kind:'ack', value:4001, text:'收到线上 ACK=12001，unwrap 为内部 4001。再确认 1000 字节，重新获得 1000 字节新发送额度。'},
+    {kind:'send', bytes:1000, text:'发出内部 [5001,6001) 的新数据，线上 SEQ=13001。已有在途量重新达到 2000。'}
+  ];
+  let windowIndex = 0, sender = {ack:1,next:1,rwnd:10000,cwnd:4000};
+  const metrics = () => { const flight = sender.next - sender.ack, limit = Math.min(sender.rwnd,sender.cwnd); return {flight,limit,allowance:Math.max(0,limit-flight)}; };
+  const wrap = absolute => (8000 + absolute) % (2 ** 32);
+
+  function renderWindow() {
+    const {flight,limit,allowance} = metrics();
+    $('window-step').textContent = `第 ${windowIndex} / ${events.length - 1} 步`;
+    $('window-next').disabled = windowIndex === events.length - 1;
+    $('window-event').textContent = events[windowIndex].text;
+    $('window-event').className = flight > limit ? 'event warning' : 'event';
+    const values = {'window-limit':limit,'window-flight':flight,'window-allowance':allowance,'window-ack':sender.ack,'window-next-abs':sender.next,'window-wire-ack':wrap(sender.ack),'window-wire-next':wrap(sender.next),'window-rwnd':sender.rwnd,'window-cwnd':sender.cwnd};
+    for (const [id,value] of Object.entries(values)) $(id).textContent = value;
+    $('window-invariant').textContent = `核对账本：bytes_in_flight = ${sender.next} − ${sender.ack} = ${flight} byte。ACK 到达与新数据发送是不同事件。`;
+    const parts = [{kind:'used',value:Math.min(flight,limit),label:'已在途'},{kind:'excess',value:Math.max(0,flight-limit),label:'旧在途超额'},{kind:'free',value:allowance,label:'可新发'}];
+    const scale = Math.max(flight,limit,1);
+    $('window-track').replaceChildren();
+    for (const part of parts) {
+      if (!part.value) continue;
+      const node = document.createElement('div');
+      node.className = `track-part ${part.kind}`; node.style.width = `${part.value / scale * 100}%`; node.textContent = part.value;
+      $('window-track').append(node);
+    }
+    $('window-track').setAttribute('aria-label',parts.map(part => `${part.label} ${part.value} 字节`).join('，'));
+  }
+
+  function resetWindow() { windowIndex = 0; sender = {ack:1,next:1,rwnd:10000,cwnd:4000}; renderWindow(); }
+  function stepWindow() {
+    if (windowIndex === events.length - 1) return;
+    const event = events[++windowIndex];
+    if (event.kind === 'send') { if (event.bytes > metrics().allowance) throw new Error('本步发送量超过允许额度'); sender.next += event.bytes; }
+    if (event.kind === 'ack') { if (event.value > sender.next) throw new Error('ACK 确认了尚未发送的内容'); sender.ack = Math.max(sender.ack,event.value); }
+    if (event.kind === 'cwnd') sender.cwnd = event.value;
+    renderWindow();
+  }
+
+  function showPanel(name) {
+    for (const panel of ['queue','window']) {
+      $(`${panel}-panel`).hidden = panel !== name;
+      $(`show-${panel}`).setAttribute('aria-pressed',String(panel === name));
+    }
+  }
+  $('queue-next').addEventListener('click',stepQueue);
+  $('queue-reset').addEventListener('click',resetQueue);
+  $('capacity').addEventListener('change',resetQueue);
+  $('window-next').addEventListener('click',stepWindow);
+  $('window-reset').addEventListener('click',resetWindow);
+  $('show-queue').addEventListener('click',() => { location.hash = 'queue'; showPanel('queue'); });
+  $('show-window').addEventListener('click',() => { location.hash = 'window'; showPanel('window'); });
+  window.addEventListener('hashchange',() => showPanel(location.hash === '#window' ? 'window' : 'queue'));
+  resetQueue(); resetWindow(); showPanel(location.hash === '#window' ? 'window' : 'queue');
+})();
+</script>
+</body>
+</html>
