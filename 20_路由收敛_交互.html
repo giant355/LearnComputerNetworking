@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 20 课 · 路由收敛</title>
+<style>
+:root{color-scheme:light dark;--bg:#f7f7f2;--paper:#fff;--ink:#172c31;--muted:#5b6d72;--line:#c5d1d0;--brand:#126961;--tint:#e3f1ed;--warn:#a3461c;--warn-bg:#fff0e5;--off:#e5e9e7}@media(prefers-color-scheme:dark){:root{--bg:#122024;--paper:#182a2f;--ink:#e1eeeb;--muted:#b2c4c4;--line:#496166;--brand:#90d9cb;--tint:#264a45;--warn:#ffc397;--warn-bg:#472e23;--off:#2a3b3f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,"Microsoft YaHei",sans-serif}main{max-width:900px;margin:auto;padding:26px 22px 44px}h1{font-size:clamp(25px,4vw,37px);line-height:1.3;margin:5px 0 8px}h2{font-size:21px;margin:26px 0 10px}.eyebrow{color:var(--brand);font-size:14px;letter-spacing:1px}.muted{color:var(--muted)}a{color:var(--brand);text-underline-offset:3px}.controls{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:20px 0}button{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 14px;min-height:44px;cursor:pointer}button.primary{color:#fff;background:var(--brand);border-color:var(--brand)}@media(prefers-color-scheme:dark){button.primary{color:#122024}}button:disabled{opacity:.5;cursor:default}button:focus-visible,a:focus-visible{outline:3px solid var(--brand);outline-offset:3px}.event{padding:13px 16px;min-height:76px;border-left:4px solid var(--brand);background:var(--tint)}.event.warn{border-color:var(--warn);background:var(--warn-bg)}.routes{display:grid;gap:14px;margin:24px 0}.route{display:grid;grid-template-columns:minmax(58px,1fr) minmax(38px,.55fr) minmax(58px,1fr) minmax(38px,.55fr) minmax(58px,1fr);align-items:center}.node{padding:10px 4px;text-align:center;background:var(--paper);border:2px solid var(--line);border-radius:8px;font-weight:700}.link{text-align:center;color:var(--muted);font-variant-numeric:tabular-nums}.link::before{content:"";display:block;height:4px;margin-bottom:3px;background:var(--off)}.route.active .node{border-color:var(--brand);background:var(--tint)}.route.active .link::before{background:var(--brand)}.route.failed .link.last::before{background:repeating-linear-gradient(90deg,var(--warn) 0 8px,transparent 8px 13px)}.route.failed .link.last{color:var(--warn)}.packet{display:none;margin-top:5px;color:var(--brand);font-size:13px;font-weight:600}.route.packet-on .packet{display:block}.route.drop .packet{display:block;color:var(--warn)}.stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:11px;margin:20px 0}.stat{padding:12px 13px;background:var(--paper);border:1px solid var(--line);border-radius:8px}.stat span{display:block;color:var(--muted);font-size:13px}.stat strong{display:block;margin-top:4px;font-size:18px}.timeline{margin:18px 0;padding:0;list-style:none}.timeline li{display:grid;grid-template-columns:38px 1fr;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);color:var(--muted)}.timeline li.done{color:var(--ink)}.timeline b{color:inherit}footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}@media(max-width:560px){main{padding:17px 13px 32px}.stats{grid-template-columns:1fr}.route{grid-template-columns:minmax(52px,1fr) minmax(28px,.45fr) minmax(52px,1fr) minmax(28px,.45fr) minmax(52px,1fr)}.node{padding:8px 2px}.link{font-size:12px}.controls button{flex:1}.event{min-height:96px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="eyebrow">计算机网络 · LESSON 20</div><h1>链路断开后，旧 FIB 怎样变成新 FIB</h1><p class="muted">逐步观察控制平面获得新知识之前，数据平面为什么仍会按旧规则转发。</p><a href="20_路由表从哪里来_转发平面与控制平面.md">返回第 20 课正文</a></header>
+
+<div class="controls"><button id="next" class="primary" type="button">下一事件</button><button id="reset" type="button">重置</button><span id="counter" aria-live="polite"></span></div>
+<div id="event" class="event" aria-live="polite"></div>
+
+<section class="routes" aria-label="R1 到 R4 的两条候选路径">
+  <div id="upper" class="route">
+    <div class="node">R1<div class="packet">数据报 →</div></div><div class="link">代价 1</div><div class="node">R2</div><div id="upperLast" class="link last">代价 1</div><div class="node">R4</div>
+  </div>
+  <div id="lower" class="route">
+    <div class="node">R1<div class="packet">数据报 →</div></div><div class="link">代价 2</div><div class="node">R3</div><div class="link last">代价 2</div><div class="node">R4</div>
+  </div>
+</section>
+
+<div class="stats">
+  <div class="stat"><span>控制平面目前知道</span><strong id="knowledge"></strong></div>
+  <div class="stat"><span>R1 当前 FIB</span><strong id="fib"></strong></div>
+  <div class="stat"><span>此刻发送结果</span><strong id="result"></strong></div>
+</div>
+
+<h2>收敛步骤</h2>
+<ol id="timeline" class="timeline"></ol>
+
+<footer>核心观察：真实拓扑、控制平面知识和数据平面 FIB 是三个不同状态；它们不会在同一瞬间一起改变。可用键盘 ←、→ 切换步骤。</footer>
+</main>
+<script>
+const states=[
+  {title:'0. 稳定状态',text:'两条路都可用。R1 已经算出经 R2 的总代价为 2，比经 R3 的代价 4 更小。',knowledge:'两条链路都正常',fib:'经 R2，总代价 2',result:'经 R2 到达 R4',upper:'active packet-on',lower:''},
+  {title:'1. 真实链路刚刚断开',text:'R2—R4 已经故障，但 R1 还没有收到任何控制消息。真实拓扑先变了，R1 的知识和 FIB 仍是旧的。',knowledge:'R1 仍认为链路正常',fib:'仍经 R2',result:'在断链处丢失',upper:'active failed drop',lower:'',warn:true},
+  {title:'2. R2 检测故障并传播信息',text:'R2 检测到相邻链路失效，产生新的链路状态信息并向外传播。消息还在路上时，R1 仍可能使用旧 FIB。',knowledge:'更新正在传播',fib:'仍经 R2',result:'仍可能丢失',upper:'active failed drop',lower:'',warn:true},
+  {title:'3. R1 收到更新',text:'R1 的控制平面现在知道 R2—R4 已断开，但“知道变化”不等于新 FIB 已经安装。它还需要重新计算。',knowledge:'已知 R2—R4 失效',fib:'旧项等待替换',result:'可能暂时丢失',upper:'failed drop',lower:'',warn:true},
+  {title:'4. R1 重新计算路径',text:'R1 在更新后的拓扑上计算，发现经 R3 到 R4 的总代价为 4。控制平面选中了备用路径。',knowledge:'新最佳路径经 R3',fib:'准备安装经 R3',result:'切换边界期',upper:'failed',lower:'active'},
+  {title:'5. 新 FIB 安装完成',text:'数据平面开始使用新规则。以后到 R4 后方前缀的数据报交给 R3，路径更长但重新可达。',knowledge:'拓扑与计算已更新',fib:'经 R3，总代价 4',result:'经 R3 到达 R4',upper:'failed',lower:'active packet-on'}
+];
+const labels=['稳定','链路故障','检测并传播','收到更新','重新计算','安装 FIB'];let index=0;
+const $=id=>document.getElementById(id);
+function render(){const s=states[index];$('counter').textContent=`第 ${index+1} / ${states.length} 步`;$('event').className=s.warn?'event warn':'event';$('event').innerHTML=`<strong>${s.title}</strong><br>${s.text}`;$('knowledge').textContent=s.knowledge;$('fib').textContent=s.fib;$('result').textContent=s.result;$('upper').className=`route ${s.upper}`;$('lower').className=`route ${s.lower}`;$('next').disabled=index===states.length-1;$('timeline').replaceChildren(...labels.map((label,i)=>{const li=document.createElement('li');if(i<=index)li.className='done';li.innerHTML=`<b>${i}</b><span>${label}</span>`;return li;}));}
+$('next').addEventListener('click',()=>{if(index<states.length-1){index++;render();}});$('reset').addEventListener('click',()=>{index=0;render();});document.addEventListener('keydown',event=>{if(event.key==='ArrowRight'&&index<states.length-1){index++;render();}if(event.key==='ArrowLeft'&&index>0){index--;render();}});render();
+</script>
+</body>
+</html>
