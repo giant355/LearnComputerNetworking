@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 21 课 · 计数到无穷</title>
+<style>
+:root{color-scheme:light dark;--bg:#f7f7f2;--paper:#fff;--ink:#172c31;--muted:#5b6d72;--line:#c5d1d0;--brand:#126961;--tint:#e3f1ed;--warn:#a3461c;--warn-bg:#fff0e5;--dead:#8f2e2e;--dead-bg:#f9e5e5}@media(prefers-color-scheme:dark){:root{--bg:#122024;--paper:#182a2f;--ink:#e1eeeb;--muted:#b2c4c4;--line:#496166;--brand:#90d9cb;--tint:#264a45;--warn:#ffc397;--warn-bg:#472e23;--dead:#ffaaaa;--dead-bg:#472727}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.65 system-ui,"Microsoft YaHei",sans-serif}main{max-width:900px;margin:auto;padding:26px 22px 44px}h1{font-size:clamp(25px,4vw,37px);line-height:1.3;margin:5px 0 8px}h2{font-size:21px;margin:26px 0 10px}.eyebrow{color:var(--brand);font-size:14px;letter-spacing:1px}.muted{color:var(--muted)}a{color:var(--brand);text-underline-offset:3px}.mode,.controls{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:18px 0}button{font:inherit;color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:7px;padding:8px 14px;min-height:44px;cursor:pointer}button.primary,button[aria-pressed="true"]{color:#fff;background:var(--brand);border-color:var(--brand)}@media(prefers-color-scheme:dark){button.primary,button[aria-pressed="true"]{color:#122024}}button:disabled{opacity:.5;cursor:default}button:focus-visible,a:focus-visible{outline:3px solid var(--brand);outline-offset:3px}.event{padding:13px 16px;min-height:92px;border-left:4px solid var(--brand);background:var(--tint)}.event.warn{border-color:var(--warn);background:var(--warn-bg)}.network{display:grid;grid-template-columns:minmax(90px,1fr) minmax(70px,.75fr) minmax(90px,1fr) minmax(70px,.75fr) minmax(90px,1fr);align-items:center;margin:25px 0}.node{padding:13px 8px;text-align:center;background:var(--paper);border:2px solid var(--line);border-radius:9px}.node strong{display:block;font-size:22px}.node span{display:block;color:var(--muted);font-size:14px}.node.bad{border-color:var(--warn);background:var(--warn-bg)}.node.dead{border-color:var(--dead);background:var(--dead-bg)}.link{text-align:center;color:var(--muted);font-size:14px}.link::before{content:"";display:block;height:4px;margin-bottom:4px;background:var(--brand)}.link.failed::before{background:repeating-linear-gradient(90deg,var(--dead) 0 8px,transparent 8px 13px)}.link.failed{color:var(--dead)}.route-table{width:100%;border-collapse:collapse;margin:18px 0;background:var(--paper)}th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left}th{color:var(--muted);font-size:14px}.bad-text{color:var(--warn);font-weight:700}.formula{padding:12px 15px;background:var(--paper);border:1px solid var(--line);border-radius:8px;font:15px/1.6 Consolas,"Microsoft YaHei",monospace;min-height:54px}.packet{margin:15px 0;padding:11px 14px;border-left:4px solid var(--line);color:var(--muted)}.packet.loop{border-color:var(--warn);color:var(--warn);background:var(--warn-bg)}footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--line);color:var(--muted);font-size:14px}@media(max-width:580px){main{padding:17px 13px 32px}.network{grid-template-columns:minmax(65px,1fr) minmax(35px,.55fr) minmax(65px,1fr) minmax(35px,.55fr) minmax(65px,1fr)}.node{padding:9px 2px}.node strong{font-size:18px}.node span,.link{font-size:12px}.mode button,.controls button{flex:1}th,td{padding:8px 6px;font-size:14px}.event{min-height:116px}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<main>
+<header><div class="eyebrow">计算机网络 · LESSON 21</div><h1>断路为什么会被“数”到无穷</h1><p class="muted">比较朴素距离向量与毒性逆转：观察同一条断链怎样产生完全不同的控制平面结果。</p><a href="21_距离向量环路与计数到无穷.md">返回第 21 课正文</a></header>
+
+<div class="mode" role="group" aria-label="选择算法"><button id="naiveMode" type="button" aria-pressed="true">朴素距离向量</button><button id="poisonMode" type="button" aria-pressed="false">加入毒性逆转</button></div>
+<div class="controls"><button id="next" class="primary" type="button">下一事件</button><button id="reset" type="button">重置</button><span id="counter" aria-live="polite"></span></div>
+<div id="event" class="event" aria-live="polite"></div>
+
+<section class="network" aria-label="A 经 B 到达目标网络 D">
+  <div id="nodeA" class="node"><strong>A</strong><span id="aMetric"></span></div>
+  <div class="link">代价 1</div>
+  <div id="nodeB" class="node"><strong>B</strong><span id="bMetric"></span></div>
+  <div id="linkBD" class="link">代价 1</div>
+  <div id="nodeD" class="node"><strong>D</strong><span>目标网络</span></div>
+</section>
+
+<table class="route-table" aria-label="A 和 B 当前到 D 的路由"><thead><tr><th>路由器</th><th>到 D 的代价</th><th>下一跳</th><th>它相信的事情</th></tr></thead><tbody><tr><td>A</td><td id="aCost"></td><td id="aNext"></td><td id="aBelief"></td></tr><tr><td>B</td><td id="bCost"></td><td id="bNext"></td><td id="bBelief"></td></tr></tbody></table>
+
+<div id="formula" class="formula"></div>
+<div id="packet" class="packet"></div>
+
+<footer>核心观察：代价增加不是发现了更长的真实路径，而可能是双方把对方依赖自己的旧结论当成新证据。可用键盘 ←、→ 切换步骤。</footer>
+</main>
+<script>
+const naive=[
+  {title:'0. 稳定状态',text:'B 与 D 直连，B 报告代价 1；A 加上到 B 的代价 1，得到代价 2。',a:'2',an:'B',ab:'经 B 可达',b:'1',bn:'直接',bb:'与 D 直连',formula:'A：1 + B 报告的 1 = 2',packet:'数据报：A → B → D，正常到达。'},
+  {title:'1. B—D 刚刚断开',text:'B 检测到直连链路失败；A 尚未收到更新，仍保留“经 B、代价 2”的旧路线。',a:'2',an:'B',ab:'仍相信旧路线',b:'∞',bn:'—',bb:'刚检测到不可达',formula:'真实拓扑已经变化，但 A 的知识尚未变化。',packet:'此刻从 A 发出的数据报会到达 B，然后因无路可走而丢失。',warn:true,failed:true},
+  {title:'2. A 的旧更新先到达 B',text:'A 报告“我到 D 的代价是 2”。B 不知道这个 2 原本依赖自己，于是把 A 当成备用路线。',a:'2',an:'B',ab:'旧结论尚未更新',b:'3',bn:'A',bb:'误以为 A 有独立路线',formula:'B：到 A 的 1 + A 报告的 2 = 3',packet:'数据报进入 A → B → A → B 的环路。',warn:true,failed:true,loop:true},
+  {title:'3. B 把错误结果告诉 A',text:'B 报告代价 3。A 的路线本来就经过 B，于是把自己的代价更新为 4。',a:'4',an:'B',ab:'相信 B 的新数字',b:'3',bn:'A',bb:'相信 A 的旧数字',formula:'A：到 B 的 1 + B 报告的 3 = 4',packet:'两边的 FIB 仍互相指向，数据报继续循环直到 TTL 归零。',warn:true,failed:true,loop:true},
+  {title:'4. A 再把结果告诉 B',text:'A 报告代价 4，B 再加一得到 5。没有出现新路径，只出现了更大的数字。',a:'4',an:'B',ab:'路线依赖 B',b:'5',bn:'A',bb:'路线依赖 A',formula:'B：到 A 的 1 + A 报告的 4 = 5',packet:'控制平面继续计数，数据平面继续产生环路。',warn:true,failed:true,loop:true},
+  {title:'5. 继续计数',text:'接下来会得到 A=6、B=7……直到协议定义的无穷。RIP 到 16 才宣布不可达。',a:'6…16',an:'B/不可达',ab:'逐渐计数到无穷',b:'7…16',bn:'A/不可达',bb:'逐渐计数到无穷',formula:'3 → 4 → 5 → 6 → … → 16（不可达）',packet:'最终会收敛为不可达，但此前的错误可能持续一段时间。',warn:true,failed:true,loop:true}
+];
+const poison=[
+  {title:'0. 稳定状态',text:'数据转发仍是 A→B→D，但 A 向 B 通告时不会说“我能到 D”。它会把这条反向通告标成不可达。',a:'2',an:'B',ab:'经 B 可达',b:'1',bn:'直接',bb:'与 D 直连',formula:'A 对其他方向可报告 2；A 对路线来源 B 报告 ∞。',packet:'数据报：A → B → D，正常到达。'},
+  {title:'1. B—D 断开',text:'B 检测到直连路线失败。A 仍有旧 FIB，但 B 已经知道自己不能把 A 当成备用，因为 A 对 B 一直报告不可达。',a:'2',an:'B',ab:'暂时保留旧路线',b:'∞',bn:'—',bb:'没有来自 A 的假备用',formula:'B 收到的 A→B 反向通告：D = ∞',packet:'过渡期间的数据报可能在 B 丢失，但不会形成 A↔B 的转发环路。',warn:true,failed:true},
+  {title:'2. B 发送触发更新',text:'B 尽快向 A 通告 D 不可达。这个变化不必等到下一次普通周期更新。',a:'2',an:'B',ab:'等待更新到达',b:'∞',bn:'—',bb:'已发出不可达更新',formula:'B → A：D = ∞',packet:'仍可能短暂丢包；分布式更新不可能瞬间完成。',warn:true,failed:true},
+  {title:'3. A 接受不可达更新',text:'A 的下一跳就是 B，所以必须接受来自 B 的更差度量，并把自己的路线也标成不可达。',a:'∞',an:'—',ab:'已知不可达',b:'∞',bn:'—',bb:'已知不可达',formula:'A 不再安装“D → B”的有效 FIB 项。',packet:'两台路由器都拒绝这条断路，二节点环被迅速拆掉。',failed:true},
+  {title:'4. 收敛完成',text:'A、B 对 D 的认识与真实拓扑一致。若以后出现新的独立路径，再通过新的更新学习。',a:'∞',an:'—',ab:'稳定不可达',b:'∞',bn:'—',bb:'稳定不可达',formula:'真实拓扑、RIB 和 FIB 重新一致。',packet:'普通数据报不会进入旧环路；发送端只会观察到目标暂时不可达。',failed:true}
+];
+let mode='naive';let index=0;const $=id=>document.getElementById(id);
+function states(){return mode==='naive'?naive:poison;}
+function render(){const list=states();const s=list[index];$('counter').textContent=`第 ${index+1} / ${list.length} 步`;$('event').className=s.warn?'event warn':'event';$('event').innerHTML=`<strong>${s.title}</strong><br>${s.text}`;$('aMetric').textContent=`到 D：${s.a}`;$('bMetric').textContent=`到 D：${s.b}`;$('aCost').textContent=s.a;$('aNext').textContent=s.an;$('aBelief').textContent=s.ab;$('bCost').textContent=s.b;$('bNext').textContent=s.bn;$('bBelief').textContent=s.bb;$('formula').textContent=s.formula;$('packet').textContent=s.packet;$('packet').className=s.loop?'packet loop':'packet';$('linkBD').className=s.failed?'link failed':'link';$('nodeA').className=s.loop?'node bad':'node';$('nodeB').className=s.loop?'node bad':'node';$('nodeD').className=s.failed?'node dead':'node';$('next').disabled=index===list.length-1;$('naiveMode').setAttribute('aria-pressed',String(mode==='naive'));$('poisonMode').setAttribute('aria-pressed',String(mode==='poison'));}
+function setMode(nextMode){mode=nextMode;index=0;render();}
+$('naiveMode').addEventListener('click',()=>setMode('naive'));$('poisonMode').addEventListener('click',()=>setMode('poison'));$('next').addEventListener('click',()=>{if(index<states().length-1){index++;render();}});$('reset').addEventListener('click',()=>{index=0;render();});document.addEventListener('keydown',event=>{if(event.key==='ArrowRight'&&index<states().length-1){index++;render();}if(event.key==='ArrowLeft'&&index>0){index--;render();}});render();
+</script>
+</body>
+</html>
