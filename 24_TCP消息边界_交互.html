@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>消息被切开和合并时怎样拆帧</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, "Microsoft YaHei", sans-serif; }
+    body { margin: 0; padding: 1rem; background: Canvas; color: CanvasText; }
+    main { max-width: 760px; margin: auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 1rem; }
+    section { padding: .85rem 0; border-top: 1px solid color-mix(in srgb, CanvasText 18%, transparent); }
+    .label { color: color-mix(in srgb, CanvasText 68%, transparent); font-size: .92rem; }
+    .bytes { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: .45rem; }
+    .byte { padding: .3rem .45rem; border-radius: .3rem; background: color-mix(in srgb, CanvasText 10%, Canvas); font-family: ui-monospace, Consolas, monospace; }
+    .message { display: inline-block; margin: .35rem .35rem 0 0; padding: .4rem .6rem; border-radius: .35rem; background: color-mix(in srgb, #3b82f6 22%, Canvas); }
+    .status { min-height: 1.5em; margin-top: .55rem; }
+    .controls { display: flex; gap: .6rem; margin-top: 1rem; }
+    button { padding: .55rem .9rem; font: inherit; color: inherit; background: ButtonFace; border: 1px solid ButtonBorder; border-radius: .4rem; cursor: pointer; }
+    button:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; }
+    button:disabled { opacity: .5; cursor: default; }
+    @media (max-width: 420px) { body { padding: .75rem; } .controls { flex-wrap: wrap; } }
+  </style>
+</head>
+<body>
+  <main aria-label="TCP 消息分帧过程">
+    <h1>一条字节流，怎样拆回两条消息？</h1>
+    <section>
+      <div class="label">发送端定义的两帧：4 字节正文长度 + 正文</div>
+      <div class="bytes" aria-label="发送帧">
+        <span class="byte">00</span><span class="byte">00</span><span class="byte">00</span><span class="byte">03</span><span class="byte">41</span><span class="byte">42</span><span class="byte">43</span>
+        <span class="byte">00</span><span class="byte">00</span><span class="byte">00</span><span class="byte">02</span><span class="byte">44</span><span class="byte">45</span>
+      </div>
+    </section>
+    <section>
+      <div class="label" id="stepLabel" aria-live="polite"></div>
+      <div class="label">本次新到的 Read 片段</div>
+      <div class="bytes" id="chunk" aria-label="本次到达字节"></div>
+      <div class="status" id="state" aria-live="polite"></div>
+    </section>
+    <section>
+      <div class="label">本次解析出的完整正文</div>
+      <div id="messages" aria-live="polite"></div>
+    </section>
+    <section>
+      <div class="label">解析后仍暂存的字节</div>
+      <div class="bytes" id="leftover" aria-label="尚未消费的字节"></div>
+    </section>
+    <div class="controls">
+      <button id="back" type="button">上一步</button>
+      <button id="next" type="button">下一段</button>
+      <button id="reset" type="button">重置</button>
+    </div>
+  </main>
+  <script>
+    const steps = [
+      { chunk: [], leftover: [], messages: [], state: "还没有字节到达。", label: "初始状态" },
+      { chunk: ["00", "00"], leftover: ["00", "00"], messages: [], state: "长度头需要 4 字节，目前只有 2 字节；先保留，继续等。", label: "第 1 段到达" },
+      { chunk: ["00", "03", "41", "42"], leftover: ["00", "00", "00", "03", "41", "42"], messages: [], state: "已读出正文长度 3，但正文目前只有 2 字节；不能提前交付。", label: "第 2 段到达" },
+      { chunk: ["43", "00", "00", "00", "02", "44", "45"], leftover: [], messages: ["ABC", "DE"], state: "第一条补齐后立即交付；后面的完整帧也在同一批字节中，继续循环拆出。", label: "第 3 段到达" }
+    ];
+    let index = 0;
+    const renderBytes = (target, values) => {
+      target.replaceChildren(...values.map(value => {
+        const node = document.createElement("span");
+        node.className = "byte";
+        node.textContent = value;
+        return node;
+      }));
+    };
+    function render() {
+      const step = steps[index];
+      document.getElementById("stepLabel").textContent = step.label;
+      renderBytes(document.getElementById("chunk"), step.chunk);
+      renderBytes(document.getElementById("leftover"), step.leftover);
+      document.getElementById("state").textContent = step.state;
+      const messages = document.getElementById("messages");
+      messages.replaceChildren(...step.messages.map(value => {
+        const node = document.createElement("span");
+        node.className = "message";
+        node.textContent = value;
+        return node;
+      }));
+      document.getElementById("back").disabled = index === 0;
+      document.getElementById("next").disabled = index === steps.length - 1;
+    }
+    document.getElementById("back").addEventListener("click", () => { if (index > 0) index--; render(); });
+    document.getElementById("next").addEventListener("click", () => { if (index < steps.length - 1) index++; render(); });
+    document.getElementById("reset").addEventListener("click", () => { index = 0; render(); });
+    render();
+  </script>
+</body>
+</html>
