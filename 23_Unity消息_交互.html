@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>第 23 课交互：旧快照与重要请求</title>
+<style>
+:root{color-scheme:light dark;--bg:#f5f7fb;--card:#fff;--ink:#172033;--muted:#526079;--accent:#2764d8;--ok:#167345;--warn:#ad4c00;--line:#d9e0eb}
+@media(prefers-color-scheme:dark){:root{--bg:#111827;--card:#1d293b;--ink:#edf2fb;--muted:#b7c3d7;--accent:#8bb3ff;--ok:#6ed6a3;--warn:#ffc078;--line:#38465d}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,"Microsoft YaHei",sans-serif}.wrap{max-width:960px;margin:auto;padding:24px 16px 48px}h1{font-size:clamp(1.5rem,4vw,2.2rem);line-height:1.25}h2{font-size:1.35rem}.lead{color:var(--muted);max-width:70ch}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,390px),1fr));gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;box-shadow:0 5px 18px #0000000a}.state{border-radius:10px;background:var(--bg);padding:12px;margin:12px 0}.row{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}button{font:inherit;font-weight:650;border:0;border-radius:9px;padding:9px 13px;background:var(--accent);color:white;cursor:pointer}button.secondary{background:var(--line);color:var(--ink)}button:disabled{opacity:.45;cursor:not-allowed}output{display:block;white-space:pre-wrap;min-height:5em;color:var(--muted);font-size:.95rem}.good{color:var(--ok);font-weight:700}.warn{color:var(--warn);font-weight:700}.tag{display:inline-block;border:1px solid var(--line);border-radius:99px;padding:2px 9px;margin:2px}.foot{color:var(--muted);font-size:.92rem}
+</style>
+</head>
+<body>
+<main class="wrap">
+<h1>第 23 课交互：旧快照与重要请求</h1>
+<p class="lead">两种消息都可能遇到丢包，但处理规则不同。先操作，再观察：位置快照通常只要最新值；购买请求必须避免“回复丢了就扣两次钱”。</p>
+<div class="grid">
+<section class="card" aria-labelledby="snapshotTitle">
+<h2 id="snapshotTitle">A. 位置快照：新状态优先</h2>
+<p>接收端当前已应用 Tick 99、位置 x=9。网络里有 Tick 100、101、102 三份快照，分别表示 x=10、11、12。</p>
+<div class="state" aria-live="polite">
+<div>当前应用：<strong id="current">Tick 99 · x=9</strong></div>
+<div>在途队列：<span id="queue"></span></div>
+<div>最近结果：<span id="snapResult">还没有新包到达</span></div>
+</div>
+<div class="row">
+<button id="deliverNew">交付最新包</button>
+<button id="deliverOld" class="secondary">交付最旧包</button>
+<button id="dropOld" class="secondary">丢弃最旧包</button>
+<button id="resetSnap" class="secondary">重置</button>
+</div>
+<p class="foot">先交付最新包，再交付旧包。比较结果与“无条件应用每个到达包”的区别。</p>
+</section>
+<section class="card" aria-labelledby="eventTitle">
+<h2 id="eventTitle">B. 购买请求：重试不能重复扣款</h2>
+<p>客户端余额 200，购买价格 100。服务器按 requestId 记录已处理结果；回复可以丢失，但同一请求不能执行两次。</p>
+<div class="state" aria-live="polite">
+<div>服务器余额：<strong id="balance">200</strong></div>
+<div>已购药水：<strong id="items">0</strong></div>
+<div>请求状态：<span id="eventResult">尚未发送</span></div>
+</div>
+<div class="row">
+<button id="sendBuy">发送购买请求 #204</button>
+<button id="loseReply" class="secondary">丢失服务器回复</button>
+<button id="retryBuy" class="secondary">重试同一请求 #204</button>
+<button id="receiveReply" class="secondary">收到服务器结果</button>
+<button id="resetEvent" class="secondary">重置</button>
+</div>
+<p class="foot">关注两件事：请求 ID 是否相同，以及服务器是否再次执行了购买副作用。</p>
+</section>
+</div>
+</main>
+<script>
+(() => {
+  let snapshots = [];
+  let lastTick = 99;
+  let lastX = 9;
+  const current = document.getElementById("current");
+  const queue = document.getElementById("queue");
+  const snapResult = document.getElementById("snapResult");
+  const renderSnapshots = () => {
+    current.textContent = "Tick " + lastTick + " · x=" + lastX;
+    queue.innerHTML = snapshots.length ? snapshots.map(p => '<span class="tag">Tick ' + p.tick + " · x=" + p.x + "</span>").join("") : "（空）";
+    document.getElementById("deliverNew").disabled = snapshots.length === 0;
+    document.getElementById("deliverOld").disabled = snapshots.length === 0;
+    document.getElementById("dropOld").disabled = snapshots.length === 0;
+  };
+  document.getElementById("deliverNew").addEventListener("click", () => {
+    const p = snapshots.pop();
+    if (p.tick > lastTick) {
+      lastTick = p.tick; lastX = p.x;
+      snapResult.innerHTML = '<span class="good">应用更新快照 Tick ' + p.tick + "。</span>";
+    } else {
+      snapResult.innerHTML = '<span class="warn">丢弃过期快照 Tick ' + p.tick + "，不让位置倒退。</span>";
+    }
+    renderSnapshots();
+  });
+  document.getElementById("deliverOld").addEventListener("click", () => {
+    const p = snapshots.shift();
+    if (p.tick > lastTick) {
+      lastTick = p.tick; lastX = p.x;
+      snapResult.innerHTML = '<span class="good">应用更新快照 Tick ' + p.tick + "。</span>";
+    } else {
+      snapResult.innerHTML = '<span class="warn">丢弃过期快照 Tick ' + p.tick + "，不让位置倒退。</span>";
+    }
+    renderSnapshots();
+  });
+  document.getElementById("dropOld").addEventListener("click", () => {
+    const p = snapshots.shift();
+    snapResult.textContent = "Tick " + p.tick + " 在网络中丢失；等待更新状态，不做重传。";
+    renderSnapshots();
+  });
+  document.getElementById("resetSnap").addEventListener("click", () => {
+    snapshots = [{tick:100,x:10},{tick:101,x:11},{tick:102,x:12}];
+    lastTick = 99; lastX = 9;
+    snapResult.textContent = "还没有新包到达";
+    renderSnapshots();
+  });
+
+  let balance = 200;
+  let items = 0;
+  let processed = false;
+  let replyPending = false;
+  let clientStatus = "尚未发送";
+  const renderEvent = () => {
+    document.getElementById("balance").textContent = balance;
+    document.getElementById("items").textContent = items;
+    document.getElementById("eventResult").textContent = clientStatus;
+    document.getElementById("sendBuy").disabled = processed;
+    document.getElementById("retryBuy").disabled = !processed || replyPending;
+    document.getElementById("loseReply").disabled = !replyPending;
+    document.getElementById("receiveReply").disabled = !replyPending;
+  };
+  document.getElementById("sendBuy").addEventListener("click", () => {
+    if (!processed && balance >= 100) {
+      balance -= 100; items += 1; processed = true; replyPending = true;
+      clientStatus = "服务器已处理 #204；回复在途中";
+    }
+    renderEvent();
+  });
+  document.getElementById("loseReply").addEventListener("click", () => {
+    replyPending = false; clientStatus = "回复丢失；客户端暂时不知道结果";
+    renderEvent();
+  });
+  document.getElementById("retryBuy").addEventListener("click", () => {
+    replyPending = true; clientStatus = "重试 #204；服务器识别为重复，不再次扣款";
+    renderEvent();
+  });
+  document.getElementById("receiveReply").addEventListener("click", () => {
+    replyPending = false; clientStatus = "收到 #204 的已保存结果：购买成功";
+    renderEvent();
+  });
+  document.getElementById("resetEvent").addEventListener("click", () => {
+    balance = 200; items = 0; processed = false; replyPending = false; clientStatus = "尚未发送";
+    renderEvent();
+  });
+  document.getElementById("resetSnap").click();
+  renderEvent();
+})();
+</script>
+</body>
+</html>
