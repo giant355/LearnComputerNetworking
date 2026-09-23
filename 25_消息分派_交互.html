@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>两个请求，响应乱序返回</title>
+  <style>
+    :root { color-scheme: light dark; font-family: system-ui, "Microsoft YaHei", sans-serif; }
+    body { margin: 0; padding: 1rem; background: Canvas; color: CanvasText; }
+    main { max-width: 780px; margin: auto; }
+    h1 { font-size: 1.35rem; margin: 0 0 .5rem; }
+    section { padding: .85rem 0; border-top: 1px solid color-mix(in srgb, CanvasText 18%, transparent); }
+    .muted { color: color-mix(in srgb, CanvasText 65%, transparent); }
+    .row { display: grid; grid-template-columns: 7rem 1fr; gap: .6rem; align-items: start; margin: .55rem 0; }
+    .tag { font-weight: 650; }
+    .card { border-radius: .45rem; padding: .55rem .7rem; background: color-mix(in srgb, #3b82f6 18%, Canvas); }
+    .pending { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: .5rem; }
+    .item { border: 1px solid color-mix(in srgb, CanvasText 25%, transparent); border-radius: .45rem; padding: .5rem .65rem; }
+    .good { background: color-mix(in srgb, #16a34a 24%, Canvas); }
+    .bad { background: color-mix(in srgb, #dc2626 18%, Canvas); }
+    .controls { display: flex; gap: .55rem; flex-wrap: wrap; margin-top: 1rem; }
+    button { padding: .55rem .9rem; font: inherit; color: inherit; background: ButtonFace; border: 1px solid ButtonBorder; border-radius: .4rem; cursor: pointer; }
+    button:focus-visible { outline: 3px solid Highlight; outline-offset: 2px; }
+    button:disabled { opacity: .5; cursor: default; }
+    .status { min-height: 2.5em; margin-top: .6rem; }
+    @media (max-width: 500px) { body { padding: .75rem; } .row { grid-template-columns: 1fr; gap: .2rem; } }
+  </style>
+</head>
+<body>
+  <main aria-label="请求响应关联交互演示">
+    <h1>两个请求，响应乱序返回</h1>
+    <p class="muted">客户端先发购买请求 41，再发背包查询 42。服务器先完成较快的查询。逐步观察 ID 怎样找到各自的等待者。</p>
+    <section>
+      <div class="row"><div class="tag">客户端发送</div><div class="card">Request Purchase，ID 41<br>Request Inventory，ID 42</div></div>
+      <div class="row"><div class="tag">待处理表</div><div class="pending" id="pending" aria-live="polite"></div></div>
+    </section>
+    <section>
+      <div class="row"><div class="tag">刚到响应</div><div class="card" id="incoming" aria-live="polite"></div></div>
+      <div class="row"><div class="tag">按 ID 分派</div><div class="card good" id="correct" aria-live="polite"></div></div>
+      <div class="row"><div class="tag">若按先后猜</div><div class="card bad" id="fifo" aria-live="polite"></div></div>
+      <div class="status muted" id="explanation" aria-live="polite"></div>
+    </section>
+    <div class="controls">
+      <button id="back" type="button">上一步</button>
+      <button id="next" type="button">下一步</button>
+      <button id="reset" type="button">重置</button>
+    </div>
+  </main>
+  <script>
+    const steps = [
+      { pending: [["41", "购买结果"], ["42", "背包查询结果"]], incoming: "还没有响应到达。", correct: "两项请求各自等待自己的 ID。", fifo: "FIFO 还没有响应可匹配。", explanation: "服务器可以并发处理请求；客户端需要保存每个仍在等待的业务操作。" },
+      { pending: [["41", "购买结果"]], incoming: "Response InventoryResult，requestId=42", correct: "查 ID 42，交给“背包查询”回调；删除 42。", fifo: "错误：把背包查询结果交给最早发出的“购买”回调。", explanation: "响应里的 ID 标识原请求。消息类型也可用于校验，但不能替代 ID，因为同类型请求也可能同时等待。" },
+      { pending: [], incoming: "Response PurchaseResult，requestId=41", correct: "查 ID 41，交给“购买”回调；删除 41。", fifo: "错误：把购买结果交给剩下的“背包查询”回调。", explanation: "两种结果都被送到了正确的业务等待者；响应返回顺序与请求发出顺序无关。" },
+      { pending: [], incoming: "重复或迟到的 Response InventoryResult，requestId=42", correct: "等待表没有 42：不能重新交付给其他操作。记录后忽略或按业务规则处理。", fifo: "FIFO 也没有待匹配项；若复用旧位置，可能污染新请求。", explanation: "这是响应关联。它不同于服务器用去重表阻止同一请求重复扣款。" }
+    ];
+    let index = 0;
+    function render() {
+      const step = steps[index];
+      const pending = document.getElementById("pending");
+      pending.replaceChildren(...step.pending.map(([id, name]) => {
+        const node = document.createElement("span");
+        node.className = "item";
+        node.textContent = "ID " + id + " → " + name;
+        return node;
+      }));
+      document.getElementById("incoming").textContent = step.incoming;
+      document.getElementById("correct").textContent = step.correct;
+      document.getElementById("fifo").textContent = step.fifo;
+      document.getElementById("explanation").textContent = step.explanation;
+      document.getElementById("back").disabled = index === 0;
+      document.getElementById("next").disabled = index === steps.length - 1;
+    }
+    document.getElementById("back").addEventListener("click", () => { if (index > 0) index--; render(); });
+    document.getElementById("next").addEventListener("click", () => { if (index < steps.length - 1) index++; render(); });
+    document.getElementById("reset").addEventListener("click", () => { index = 0; render(); });
+    render();
+  </script>
+</body>
+</html>
