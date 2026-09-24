@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第 26 课交互：从监听端口到 TCP 字节流</title>
+  <style>
+    :root { color-scheme: light; --ink:#17212b; --muted:#586778; --blue:#1769aa; --pale:#eaf4fb; --line:#cbd8e2; --green:#19734b; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f3f6f8; color:var(--ink); font:16px/1.6 system-ui,"Microsoft YaHei",sans-serif; }
+    main { max-width:920px; margin:0 auto; padding:24px 16px 40px; }
+    h1 { font-size:clamp(1.45rem,4vw,2.1rem); line-height:1.25; margin:0 0 8px; }
+    p { margin:8px 0; }
+    .sub { color:var(--muted); margin-bottom:20px; }
+    .panel { background:white; border:1px solid var(--line); border-radius:14px; padding:18px; box-shadow:0 5px 18px #24364a0d; }
+    .state { display:flex; justify-content:space-between; gap:12px; align-items:center; margin-bottom:14px; }
+    .badge { border-radius:99px; background:var(--pale); color:var(--blue); padding:4px 12px; font-weight:700; white-space:nowrap; }
+    .progress { height:8px; background:#e5ebef; border-radius:8px; overflow:hidden; margin:14px 0 20px; }
+    .progress div { height:100%; width:0; background:var(--blue); transition:width .25s ease; }
+    .flow { display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; margin:16px 0; }
+    .node { min-height:92px; display:flex; flex-direction:column; justify-content:center; border:2px solid var(--line); border-radius:12px; padding:12px; background:#fff; transition:.2s; }
+    .node strong { font-size:1rem; }
+    .node span { color:var(--muted); font-size:.9rem; }
+    .node.active { border-color:var(--blue); background:var(--pale); }
+    .arrow { color:var(--blue); font-size:1.4rem; font-weight:800; text-align:center; }
+    pre { white-space:pre-wrap; overflow-wrap:anywhere; background:#111d28; color:#e9f3fa; padding:14px; border-radius:10px; min-height:62px; }
+    .explain { border-left:4px solid var(--green); background:#f0f8f3; padding:12px 14px; border-radius:5px; min-height:78px; }
+    .invariant { color:#155b3e; font-weight:700; }
+    .controls { display:flex; gap:10px; flex-wrap:wrap; margin-top:16px; }
+    button { border:0; border-radius:9px; padding:10px 16px; font:inherit; font-weight:700; cursor:pointer; background:var(--blue); color:white; }
+    button.secondary { background:#e6edf2; color:var(--ink); }
+    button:focus-visible { outline:3px solid #e09b22; outline-offset:3px; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    @media (max-width:600px) { .flow { grid-template-columns:1fr; } .arrow { transform:rotate(90deg); } .node { min-height:72px; } .state { align-items:flex-start; flex-direction:column; } }
+  </style>
+</head>
+<body>
+<main>
+  <h1>从监听端口到 TCP 字节流</h1>
+  <p class="sub">逐步观察：C# 对象只负责调用接口，连接和字节交付由操作系统与 TCP 协作。</p>
+  <section class="panel" aria-live="polite">
+    <div class="state"><strong id="title">准备状态：还没有监听端点</strong><span class="badge" id="step">0 / 6</span></div>
+    <div class="progress" aria-label="步骤进度"><div id="bar"></div></div>
+    <div class="flow" aria-label="客户端到服务器的数据路径">
+      <div class="node" id="client"><strong>客户端进程</strong><span id="clientState">没有连接对象</span></div>
+      <div class="arrow" id="arrow" aria-hidden="true">→</div>
+      <div class="node" id="server"><strong>服务器进程</strong><span id="serverState">没有监听端点</span></div>
+    </div>
+    <p><strong>这一刻发生的 C# 调用</strong></p>
+    <pre id="code">还没有调用网络 API。</pre>
+    <div class="explain"><strong>观察重点</strong><div id="detail">点击“下一步”开始。先预测：监听端点是否已经等于一条玩家连接？</div></div>
+    <p class="invariant" id="invariant">不变量：创建 API 对象不等于完成 TCP 连接。</p>
+    <div class="controls">
+      <button class="secondary" id="reset">重置</button>
+      <button class="secondary" id="back" disabled>上一步</button>
+      <button id="next">下一步</button>
+    </div>
+  </section>
+</main>
+<script>
+  const states = [
+    { title:"准备状态：还没有监听端点", client:"没有连接对象", server:"没有监听端点", code:"还没有调用网络 API。", detail:"点击“下一步”开始。先预测：监听端点是否已经等于一条玩家连接？", invariant:"不变量：创建 API 对象不等于完成 TCP 连接。", c:false, s:false, arrow:"→" },
+    { title:"1. 服务器开始监听", client:"尚未连接", server:"TcpListener：127.0.0.1:5050 正在监听", code:"var listener = new TcpListener(IPAddress.Loopback, 5050);\nlistener.Start();", detail:"Start 会让底层 Socket 绑定本机端点并开始监听。这里使用 Loopback，只接受本机测试连接。", invariant:"不变量：监听端点不是已连接的玩家连接。", c:false, s:true, arrow:"→" },
+    { title:"2. 客户端发起连接", client:"TcpClient.ConnectAsync(127.0.0.1, 5050)", server:"TcpListener 等待 Accept", code:"var client = new TcpClient();\nawait client.ConnectAsync(IPAddress.Loopback, 5050);", detail:"客户端给出服务器目标 IP 和端口。若本地端口未预先绑定，通常由操作系统挑选可用端口。TCP 握手由操作系统处理。", invariant:"不变量：ConnectAsync 的参数是远端目标端点，不是应用消息。", c:true, s:true, arrow:"⇄" },
+    { title:"3. 服务器接受这条连接", client:"已连接：127.0.0.1:53024", server:"listener 仍监听；peer 对应本条连接", code:"TcpClient peer = await listener.AcceptTcpClientAsync();", detail:"Accept 返回一条具体连接对应的新 TcpClient。监听对象仍可等待其他客户端；每条连接有独立的连接状态。", invariant:"不变量：Listener 和被接受的 peer 不是同一个对象。", c:true, s:true, arrow:"⇄" },
+    { title:"4. 双方从连接取得字节流", client:"NetworkStream：可读、可写", server:"NetworkStream：同一连接的另一端", code:"NetworkStream stream = client.GetStream();", detail:"流是双向的：双方都能读和写。它承载连续字节，不解析游戏对象、消息类型或长度前缀。", invariant:"不变量：一条 TCP 连接的两个方向各自形成有序字节流。", c:true, s:true, arrow:"⇄" },
+    { title:"5. 写入字节，读取任意可用片段", client:"WriteAsync 把字节交给本地流", server:"ReadAsync 返回本次实际字节数", code:"await stream.WriteAsync(bytes, 0, bytes.Length);\nint count = await stream.ReadAsync(buffer, 0, buffer.Length);", detail:"count 只表示这次实际读到的字节数。它可以是应用帧的一部分，也可以跨过相邻帧；长度前缀拆帧器仍由应用实现。", invariant:"不变量：Read/Write 调用边界不等于应用消息边界。", c:true, s:true, arrow:"字节 ⇄" },
+    { title:"6. 连接结束一个发送方向", client:"Shutdown(Send)：不再发送", server:"ReadAsync 最终返回 0", code:"client.Client.Shutdown(SocketShutdown.Send);", detail:"对端优雅地结束发送方向后，读取循环读完已有数据，之后返回 0。半关闭时反方向仍可能继续发送，所以 0 不总等于双方两个方向都完全关闭。", invariant:"不变量：流结束信号只说明这个方向没有更多字节，不说明业务是否成功。", c:true, s:true, arrow:"⇄" }
+  ];
+  let current = 0;
+  const byId = id => document.getElementById(id);
+  function render() {
+    const x = states[current];
+    byId("title").textContent = x.title;
+    byId("step").textContent = current + " / " + (states.length - 1);
+    byId("bar").style.width = (current / (states.length - 1) * 100) + "%";
+    byId("clientState").textContent = x.client;
+    byId("serverState").textContent = x.server;
+    byId("code").textContent = x.code;
+    byId("detail").textContent = x.detail;
+    byId("invariant").textContent = x.invariant;
+    byId("client").classList.toggle("active", x.c);
+    byId("server").classList.toggle("active", x.s);
+    byId("arrow").textContent = x.arrow;
+    byId("back").disabled = current === 0;
+    byId("next").disabled = current === states.length - 1;
+  }
+  byId("reset").addEventListener("click", () => { current = 0; render(); });
+  byId("back").addEventListener("click", () => { if (current > 0) current--; render(); });
+  byId("next").addEventListener("click", () => { if (current < states.length - 1) current++; render(); });
+  render();
+</script>
+</body>
+</html>
