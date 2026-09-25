@@ -12,7 +12,7 @@
     h1 { line-height:1.25; margin:.2em 0; }
     .intro,.panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 20px; box-shadow:0 4px 16px #2035520a; }
     .intro { margin:16px 0; }
-    .path { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:18px 0; }
+    .path { display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin:18px 0; }
     .node { min-height:82px; display:grid; place-items:center; text-align:center; border:1px solid var(--line); border-radius:10px; padding:8px; background:white; color:var(--muted); transition:.2s; }
     .node.active { border:2px solid var(--blue); background:var(--pale); color:var(--blue); font-weight:700; }
     .node.done { border-color:#9bcdb3; background:#eff9f3; color:var(--green); }
@@ -32,27 +32,27 @@
 <main>
   <p class="status"><a href="27_DNS_域名怎样找到服务器.md">← 返回第 27 课正文</a></p>
   <h1>DNS 怎样把名字变成地址</h1>
-  <p>逐步走一遍一次缓存未命中的查询。重点看：每个服务器知道什么，以及它把什么线索交给下一位。</p>
-  <section class="intro"><strong>情境</strong>：游戏程序要连接 <code>game.example.com:5050</code>。本机和递归解析器都没有缓存答案。下面的地址都是文档专用的虚构示例。</section>
+  <p>逐步走一遍一次缓存未命中的查询。重点看：谁发问、谁只给下一位的线索、谁发布最终记录。A 与 AAAA 两种查询在图中合并展示。</p>
+  <section class="intro"><strong>情境</strong>：游戏程序要连接 <code>game.example.com:5050</code>。本机和递归解析器都没有缓存地址答案或相关委派线索。下面的地址都是文档专用的虚构示例。</section>
   <div class="path" aria-label="DNS 查询流程">
-    <div class="node" id="n0">游戏程序<br>需要 IP</div><div class="node" id="n1">递归解析器<br>替本机查</div><div class="node" id="n2">根服务器<br>指出 .com</div><div class="node" id="n3">.com 服务器<br>指出权威区</div><div class="node" id="n4">权威服务器<br>发布记录</div>
+    <div class="node" id="n0">游戏程序<br>需要 IP</div><div class="node" id="n1">本机解析组件<br>负责发问</div><div class="node" id="n2">递归解析器<br>替本机查</div><div class="node" id="n3">根服务器<br>指出 .com</div><div class="node" id="n4">.com 服务器<br>指出 example.com</div><div class="node" id="n5">权威服务器<br>发布记录</div>
   </div>
   <section class="panel">
     <div class="status" id="counter" aria-live="polite"></div><div class="message" id="message" aria-live="polite"></div><div class="wire" id="wire"></div>
     <div class="controls"><button class="secondary" id="back">上一步</button><button id="next">开始查询</button><button class="secondary" id="reset">重新开始</button></div>
   </section>
-  <p class="note"><strong>观察：</strong>根服务器和 .com 服务器主要给“下一位该问谁”的委派线索；最终记录由负责该区域的权威服务器发布。</p>
+  <p class="note"><strong>观察：</strong>根服务器和 .com 服务器主要给“下一位该问谁”的线索；最终记录由权威服务器发布。DNS 查询本身也要通过 IP 和链路层发往已知地址的 DNS 服务器。</p>
 </main>
 <script>
   const steps = [
-    { nodes:[0], title:"1. 应用先向本机解析服务求助", body:"应用提供主机名。系统会检查本机可用缓存；未命中时，向配置好的递归解析器查询。端口 5050 还留给后面的连接阶段。", wire:"问题：game.example.com 的 A / AAAA 记录是什么？" },
-    { nodes:[1], title:"2. 递归解析器先检查自己的缓存", body:"缓存未命中，所以它要沿着 DNS 名字树找负责者。它替本机完成查询，并在获得答案后返回最终结果。", wire:"递归解析器：我还不知道答案，需要从委派链寻找权威服务器。" },
-    { nodes:[1,2], title:"3. 根服务器提供 .com 的线索", body:"根服务器知道顶级域的位置。它通常不会回答 game.example.com 的最终 IP，而是告诉递归解析器该询问哪些 .com 顶级域服务器。", wire:"递归解析器 → 根：谁负责 .com？\n根 → 递归解析器：去询问 .com 的服务器。" },
-    { nodes:[1,3], title:"4. .com 服务器继续委派", body:"递归解析器询问 .com：谁负责 example.com？.com 返回该域权威 DNS 服务器的线索。", wire:"递归解析器 → .com：谁负责 example.com？\n.com → 递归解析器：去询问 example.com 的权威服务器。" },
-    { nodes:[1,4], title:"5. 权威服务器返回它发布的记录", body:"递归解析器现在问到了负责者。权威服务器可以返回 A、AAAA、CNAME 等记录，并附带缓存期限 TTL。", wire:"game.example.com A 192.0.2.42\ngame.example.com AAAA 2001:db8::42\nTTL = 60 秒（演示值）" },
-    { nodes:[0,1], title:"6. 答案被缓存并交给应用", body:"递归解析器缓存记录，再答复本机解析服务。本机把可用地址交给应用；缓存让同一解析器之后的查询不必重走整条链。", wire:"解析结果：[192.0.2.42, 2001:db8::42]\n注意：这是候选地址，不是连接成功保证。" },
-    { nodes:[0], title:"7. DNS 到此完成，TCP 才尝试连接", body:"应用或连接库按平台策略选择、尝试或竞速一个地址，再把 IP 与端口 5050 交给连接过程。DNS 不检查服务器是否监听，也不替 TCP 握手。", wire:"DNS：名字 → 候选 IP\nTCP：尝试连接 候选 IP:5050" },
-    { nodes:[0,1], title:"8. 再查一次：缓存命中", body:"TTL 仍有效时，递归解析器可以直接返回缓存记录，不再询问根、顶级域和权威服务器。记录修改后，旧缓存最多可能继续存在到其 TTL 到期。", wire:"本机 → 递归解析器：再查 game.example.com\n递归解析器：缓存命中，直接返回剩余有效期内的记录。" }
+    { nodes:[0,1], title:"1. 应用先向本机解析服务求助", body:"应用提供主机名。本机缓存未命中时，把问题交给网络配置中的 DNS 服务器；若家庭路由器只转发查询，就由上游递归解析器继续查。端口 5050 留给后面的连接阶段。", wire:"问题：game.example.com 的 A / AAAA 记录是什么？（两种类型分别查询，此处合并展示）" },
+    { nodes:[2], title:"2. 递归解析器先检查自己的缓存", body:"最终地址和相关委派线索都未命中。解析器预先知道根服务器的地址，接下来要沿名字层级找负责发布记录的人。", wire:"递归解析器：没有可复用的答案或委派线索，从根开始。" },
+    { nodes:[2,3], title:"3. 根服务器提供 .com 的线索", body:"根服务器通常不给出游戏服务器的 IP，而是用 NS 等记录指出负责 .com 的 DNS 服务器。要向下一位发包，解析器还需要取得那台 DNS 服务器的 IP。", wire:"递归解析器 → 根：谁负责 .com？\n根 → 递归解析器：去询问 .com 的 DNS 服务器。" },
+    { nodes:[2,4], title:"4. .com 服务器继续委派", body:"递归解析器询问 .com：谁负责 example.com？.com 返回该域权威 DNS 服务器的线索，而不是游戏服务器的 IP。", wire:"递归解析器 → .com：谁负责 example.com？\n.com → 递归解析器：去询问 example.com 的权威 DNS 服务器。" },
+    { nodes:[2,5], title:"5. 权威服务器返回它发布的记录", body:"递归解析器问到了负责发布记录的人。若分别查询 A 和 AAAA，权威服务器就按各自类型回答，并附带相应的缓存期限 TTL。", wire:"game.example.com A 192.0.2.42\ngame.example.com AAAA 2001:db8::42\nTTL = 60 秒（演示值）" },
+    { nodes:[0,1,2], title:"6. 答案被缓存并交给应用", body:"递归解析器缓存记录，再答复本机解析服务；本机也可能缓存。交给应用的是候选地址，并不代表服务器一定可达。", wire:"解析结果：[192.0.2.42, 2001:db8::42]\n注意：这是候选地址，不是连接成功保证。" },
+    { nodes:[0], title:"7. DNS 到此完成，TCP 才尝试连接", body:"应用或连接库依次或并行尝试候选地址，再把所选 IP 与端口 5050 交给 TCP 连接过程。DNS 不检查游戏服务是否监听。", wire:"DNS：名字 → 候选 IP\nTCP：尝试连接 候选 IP:5050" },
+    { nodes:[0,1,2], title:"8. 另一台电脑查询：递归缓存命中", body:"另一台电脑没有本机缓存，但使用同一个递归解析器。只要记录仍在正常缓存期内，解析器可直接返回；原电脑再次查询还可能先命中自己的本机缓存。", wire:"另一台电脑 → 递归解析器：查 game.example.com\n递归解析器：缓存命中，不必再问根、.com 或权威服务器。" }
   ];
   let index = -1;
   const nodes = [...document.querySelectorAll(".node")];
