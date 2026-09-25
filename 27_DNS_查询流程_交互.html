@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第 27 课交互：DNS 查询如何找到地址</title>
+  <style>
+    :root { color-scheme: light; --ink:#1d2939; --muted:#526174; --blue:#1459a6; --pale:#eef5ff; --line:#ccd7e5; --green:#23724d; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f5f7fb; color:var(--ink); font:17px/1.65 system-ui,"Microsoft YaHei",sans-serif; }
+    main { max-width:900px; margin:0 auto; padding:28px 20px 56px; }
+    h1 { line-height:1.25; margin:.2em 0; }
+    .intro,.panel { background:#fff; border:1px solid var(--line); border-radius:14px; padding:18px 20px; box-shadow:0 4px 16px #2035520a; }
+    .intro { margin:16px 0; }
+    .path { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin:18px 0; }
+    .node { min-height:82px; display:grid; place-items:center; text-align:center; border:1px solid var(--line); border-radius:10px; padding:8px; background:white; color:var(--muted); transition:.2s; }
+    .node.active { border:2px solid var(--blue); background:var(--pale); color:var(--blue); font-weight:700; }
+    .node.done { border-color:#9bcdb3; background:#eff9f3; color:var(--green); }
+    .status { color:var(--muted); font-size:.92rem; }
+    .message { min-height:110px; }
+    .message h2 { margin:.15em 0 .4em; font-size:1.3rem; }
+    .wire { margin:14px 0; padding:12px 14px; background:#f2f5f9; border-radius:9px; font:.95rem/1.7 ui-monospace,Consolas,monospace; white-space:pre-wrap; }
+    .controls { display:flex; flex-wrap:wrap; gap:10px; margin-top:18px; }
+    button { border:0; border-radius:9px; padding:10px 16px; background:var(--blue); color:white; font:inherit; cursor:pointer; }
+    button.secondary { background:#e8edf4; color:var(--ink); }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .note { border-left:4px solid #d5a12b; padding:8px 12px; background:#fff9e8; color:#5e4b1d; }
+    @media(max-width:650px) { .path { grid-template-columns:1fr; } .node { min-height:52px; } }
+  </style>
+</head>
+<body>
+<main>
+  <p class="status"><a href="27_DNS_域名怎样找到服务器.md">← 返回第 27 课正文</a></p>
+  <h1>DNS 怎样把名字变成地址</h1>
+  <p>逐步走一遍一次缓存未命中的查询。重点看：每个服务器知道什么，以及它把什么线索交给下一位。</p>
+  <section class="intro"><strong>情境</strong>：游戏程序要连接 <code>game.example.com:5050</code>。本机和递归解析器都没有缓存答案。下面的地址都是文档专用的虚构示例。</section>
+  <div class="path" aria-label="DNS 查询流程">
+    <div class="node" id="n0">游戏程序<br>需要 IP</div><div class="node" id="n1">递归解析器<br>替本机查</div><div class="node" id="n2">根服务器<br>指出 .com</div><div class="node" id="n3">.com 服务器<br>指出权威区</div><div class="node" id="n4">权威服务器<br>发布记录</div>
+  </div>
+  <section class="panel">
+    <div class="status" id="counter" aria-live="polite"></div><div class="message" id="message" aria-live="polite"></div><div class="wire" id="wire"></div>
+    <div class="controls"><button class="secondary" id="back">上一步</button><button id="next">开始查询</button><button class="secondary" id="reset">重新开始</button></div>
+  </section>
+  <p class="note"><strong>观察：</strong>根服务器和 .com 服务器主要给“下一位该问谁”的委派线索；最终记录由负责该区域的权威服务器发布。</p>
+</main>
+<script>
+  const steps = [
+    { nodes:[0], title:"1. 应用先向本机解析服务求助", body:"应用提供主机名。系统会检查本机可用缓存；未命中时，向配置好的递归解析器查询。端口 5050 还留给后面的连接阶段。", wire:"问题：game.example.com 的 A / AAAA 记录是什么？" },
+    { nodes:[1], title:"2. 递归解析器先检查自己的缓存", body:"缓存未命中，所以它要沿着 DNS 名字树找负责者。它替本机完成查询，并在获得答案后返回最终结果。", wire:"递归解析器：我还不知道答案，需要从委派链寻找权威服务器。" },
+    { nodes:[1,2], title:"3. 根服务器提供 .com 的线索", body:"根服务器知道顶级域的位置。它通常不会回答 game.example.com 的最终 IP，而是告诉递归解析器该询问哪些 .com 顶级域服务器。", wire:"递归解析器 → 根：谁负责 .com？\n根 → 递归解析器：去询问 .com 的服务器。" },
+    { nodes:[1,3], title:"4. .com 服务器继续委派", body:"递归解析器询问 .com：谁负责 example.com？.com 返回该域权威 DNS 服务器的线索。", wire:"递归解析器 → .com：谁负责 example.com？\n.com → 递归解析器：去询问 example.com 的权威服务器。" },
+    { nodes:[1,4], title:"5. 权威服务器返回它发布的记录", body:"递归解析器现在问到了负责者。权威服务器可以返回 A、AAAA、CNAME 等记录，并附带缓存期限 TTL。", wire:"game.example.com A 192.0.2.42\ngame.example.com AAAA 2001:db8::42\nTTL = 60 秒（演示值）" },
+    { nodes:[0,1], title:"6. 答案被缓存并交给应用", body:"递归解析器缓存记录，再答复本机解析服务。本机把可用地址交给应用；缓存让同一解析器之后的查询不必重走整条链。", wire:"解析结果：[192.0.2.42, 2001:db8::42]\n注意：这是候选地址，不是连接成功保证。" },
+    { nodes:[0], title:"7. DNS 到此完成，TCP 才尝试连接", body:"应用或连接库按平台策略选择、尝试或竞速一个地址，再把 IP 与端口 5050 交给连接过程。DNS 不检查服务器是否监听，也不替 TCP 握手。", wire:"DNS：名字 → 候选 IP\nTCP：尝试连接 候选 IP:5050" },
+    { nodes:[0,1], title:"8. 再查一次：缓存命中", body:"TTL 仍有效时，递归解析器可以直接返回缓存记录，不再询问根、顶级域和权威服务器。记录修改后，旧缓存最多可能继续存在到其 TTL 到期。", wire:"本机 → 递归解析器：再查 game.example.com\n递归解析器：缓存命中，直接返回剩余有效期内的记录。" }
+  ];
+  let index = -1;
+  const nodes = [...document.querySelectorAll(".node")];
+  const message = document.getElementById("message");
+  const wire = document.getElementById("wire");
+  const counter = document.getElementById("counter");
+  const next = document.getElementById("next");
+  const back = document.getElementById("back");
+  function render() {
+    nodes.forEach((node, i) => { node.classList.toggle("active", index >= 0 && steps[index].nodes.includes(i)); node.classList.toggle("done", index > 0 && steps.slice(0, index).some(step => step.nodes.includes(i))); });
+    if (index < 0) { counter.textContent = "缓存未命中：准备开始"; message.innerHTML = "<h2>点击“开始查询”</h2><p>观察查询怎样从本机出发，沿名字层级找到记录发布者。</p>"; wire.textContent = "game.example.com:5050"; next.textContent = "开始查询"; }
+    else { const step = steps[index]; counter.textContent = `步骤 ${index + 1} / ${steps.length}`; message.innerHTML = `<h2>${step.title}</h2><p>${step.body}</p>`; wire.textContent = step.wire; next.textContent = index === steps.length - 1 ? "从头再看" : "下一步"; }
+    back.disabled = index < 0;
+  }
+  next.addEventListener("click", () => { index = index >= steps.length - 1 ? 0 : index + 1; render(); });
+  back.addEventListener("click", () => { index = Math.max(-1, index - 1); render(); });
+  document.getElementById("reset").addEventListener("click", () => { index = -1; render(); });
+  render();
+</script>
+</body>
+</html>
