@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>第 28 课交互：公网怎样连进家里的游戏</title>
+  <style>
+    :root { color-scheme:light; --ink:#19293b; --muted:#526277; --line:#cbd8e5; --blue:#145ca8; --pale:#eaf3ff; --green:#176b48; --red:#a83232; --amber:#806018; }
+    * { box-sizing:border-box; }
+    body { margin:0; background:#f3f6fa; color:var(--ink); font:16px/1.65 system-ui,"Microsoft YaHei",sans-serif; }
+    main { width:min(100%,960px); margin:auto; padding:22px 16px 48px; }
+    h1 { margin:.2em 0 .4em; font-size:clamp(1.5rem,4vw,2rem); line-height:1.3; }
+    h2 { margin:0 0 .5rem; font-size:1.13rem; }
+    p { margin:.5rem 0; }
+    code { padding:.06em .2em; border-radius:4px; background:#eef2f6; overflow-wrap:anywhere; }
+    .muted,.counter { color:var(--muted); }
+    .intro,.panel { background:#fff; border:1px solid var(--line); border-radius:13px; padding:16px 18px; margin:14px 0; box-shadow:0 3px 12px #24384909; }
+    .intro { border-left:5px solid var(--blue); }
+    .legend { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+    .legend span { border:1px solid var(--line); border-radius:999px; padding:3px 9px; background:#f8fafc; font-size:.91rem; }
+    .grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    .state-list { display:grid; grid-template-columns:minmax(8.8em,auto) minmax(0,1fr); gap:7px 12px; margin:0; }
+    .state-list dt { color:var(--muted); }
+    .state-list dd { margin:0; font-weight:600; overflow-wrap:anywhere; }
+    .story { border-left:5px solid var(--blue); }
+    .story h2 { font-size:1.35rem; }
+    .event { font-weight:600; }
+    .route-group { display:grid; gap:8px; }
+    .route { display:flex; flex-wrap:wrap; align-items:center; gap:6px; }
+    .hop { display:inline-block; border:1px solid #9cbde1; border-radius:8px; padding:4px 8px; background:var(--pale); font-size:.91rem; }
+    .arrow { color:var(--muted); font-weight:700; }
+    .outcome { border-radius:9px; padding:9px 12px; font-weight:650; }
+    .outcome.neutral { background:#eef2f6; }
+    .outcome.success { background:#eaf7ef; color:var(--green); }
+    .outcome.fail { background:#fff0ee; color:var(--red); }
+    .outcome.notice { background:#fff6df; color:var(--amber); }
+    .invariant { border-left:4px solid #b08b2d; padding:8px 12px; background:#fff9e9; }
+    .controls { display:flex; flex-wrap:wrap; gap:9px; margin:18px 0; }
+    button { border:1px solid var(--blue); border-radius:9px; padding:9px 15px; background:var(--blue); color:#fff; font:inherit; cursor:pointer; }
+    button.secondary { background:#fff; color:var(--blue); }
+    button:focus-visible { outline:3px solid #eea52c; outline-offset:3px; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .footer { color:var(--muted); font-size:.92rem; }
+    @media(max-width:650px) { .grid { grid-template-columns:1fr; } .state-list { grid-template-columns:7.8em minmax(0,1fr); } .panel,.intro { padding:13px 14px; } }
+  </style>
+</head>
+<body>
+<main>
+  <p class="muted"><a href="28_NAT_端口映射与公网连入.md">← 返回第 28 课正文</a></p>
+  <h1>为什么“我能连出去”不等于“朋友能连进来”</h1>
+  <div class="intro">
+    <p>房主 H 在家里监听 TCP <code>7777</code>，想让朋友 F 直接加入。H 已从配置或 DNS 得到房间目录 S 的地址；房主也把“试着连接 <code>203.0.113.8:7777</code>”告诉 F，但这不保证路径已通。先观察 H 向 S 发起出站连接，再试一次朋友主动连入。点击“下一步”，留意每一步新增了哪条规则，以及数据停在哪一关。</p>
+    <div class="legend" aria-label="固定角色和地址">
+      <span>主机 H：<code>192.168.1.10</code></span>
+      <span>家用路由器公网侧：<code>203.0.113.8</code></span>
+      <span>房间目录 S：<code>198.51.100.20:443</code></span>
+      <span>朋友 F：<code>198.51.100.44:51000</code></span>
+    </div>
+    <p class="footer">这些公网地址属于文档示例地址，在交互中只代表假设可通信的设备；<code>100.64.1.5</code> 则用于后面的运营商级 NAT 情境。</p>
+  </div>
+
+  <section class="panel story" aria-label="当前步骤">
+    <p class="counter" id="counter" aria-live="polite"></p>
+    <h2 id="title"></h2>
+    <p class="event" id="event"></p>
+    <p id="explanation"></p>
+  </section>
+
+  <div class="grid">
+    <section class="panel" aria-label="数据正在经过哪里">
+      <h2>这一步的数据路径</h2>
+      <div class="route-group" id="routes"></div>
+      <p class="muted" id="stopped"></p>
+      <div class="outcome" id="outcome" role="status"></div>
+    </section>
+    <section class="panel" aria-label="设备当前状态">
+      <h2>此刻已有的状态</h2>
+      <dl class="state-list">
+        <dt>家用路由器 WAN（外网侧）</dt><dd id="wan"></dd>
+        <dt>出站 NAT 会话</dt><dd id="mapping"></dd>
+        <dt>手动端口转发</dt><dd id="forwarding"></dd>
+        <dt>H 的 TCP 7777</dt><dd id="listener"></dd>
+        <dt>H 的防火墙</dt><dd id="firewall"></dd>
+        <dt>运营商网关</dt><dd id="isp"></dd>
+      </dl>
+    </section>
+  </div>
+
+  <section class="panel" aria-label="本步要保持的判断">
+    <h2>现在应该能判断什么？</h2>
+    <p class="invariant" id="invariant"></p>
+  </section>
+
+  <div class="controls" aria-label="演示控制">
+    <button type="button" class="secondary" id="previous">上一步</button>
+    <button type="button" id="next">下一步</button>
+    <button type="button" class="secondary" id="reset">重置</button>
+  </div>
+  <p class="footer">这是解释路径的状态演示，不会真的打开端口或连接网络。不同路由器的动态 NAT 策略可能不同；这里不把出站映射当作允许任意外部主机连入的保证。</p>
+</main>
+<script>
+  const base = { wan:"203.0.113.8（家用路由器自己持有）", mapping:"无", forwarding:"无", listener:"H 正在监听", firewall:"阻止来自外部的 TCP 7777", isp:"无第二层 NAT" };
+  const outbound = "TCP 203.0.113.8:40001 ↔ 192.168.1.10:53000（本例用于 H 与 S 的连接）";
+  const manual = "TCP 203.0.113.8:7777 → 192.168.1.10:7777";
+  const cgn = { wan:"100.64.1.5（不是公网地址）", mapping:"无；换成另一个网络情境", forwarding:"家用路由器仍设有 TCP 7777 → H:7777", listener:"H 正在监听", firewall:"已允许 TCP 7777", isp:"运营商持有 203.0.113.8；没有给此家庭配置入站 7777 转发" };
+  const steps = [
+    { title:"起点：H 在家里等朋友", event:"目前没有发送任何数据包，也没有 NAT 会话。", explanation:"H 的程序监听 TCP 7777，只说明它愿意收这个端口的数据；公网中的朋友还不知道怎样穿过路由器和防火墙到达它。", routes:[["朋友 F", "公网", "家用路由器", "主机 H"]], stopped:"图中是朋友期望走的路线，并非已经打通的连接。", outcome:"未尝试连接。", tone:"neutral", invariant:"监听端口 ≠ 路由器已有入站规则 ≠ 防火墙已经放行。", state:{} },
+    { title:"1. H 先向匹配服务器发包", event:"H:53000 → S:443 的 TCP 连接请求到达家用路由器。", explanation:"H 已知道 S 的地址，因此能主动发起连接。现在包刚到路由器，路由器还没有做地址和端口改写。", routes:[["H 192.168.1.10:53000", "家用路由器", "S 198.51.100.20:443"]], stopped:"当前处理点：家用路由器。", outcome:"准备做出站 NAT。", tone:"notice", invariant:"包里的源地址此时还是 H 的私有地址；不能直接把它当成公网回信地址。", state:{} },
+    { title:"2. 路由器建立出站 NAT 会话", event:"路由器把源改为 203.0.113.8:40001，并记住它对应 H:53000。", explanation:"这条临时状态让与 S 的连接可以收到回复。S 看到的来源是路由器公网地址和新端口，不是 H 的 192.168.1.10。", routes:[["H:53000", "家用路由器改写为 :40001", "S:443"]], stopped:"路由器已记录这条出站 TCP 会话。", outcome:"出站包能够发向 S。", tone:"success", invariant:"40001 对应本例 H→S 的连接；它没有替公网 7777 建立入站转发。", state:{ mapping:outbound } },
+    { title:"3. S 的回复返回 H", event:"S:443 → 203.0.113.8:40001；路由器按已有会话转给 H:53000。", explanation:"路由器查看先前保存的出站会话，找到内网目标，再做反向改写。这个成功只说明 H 与 S 的这条连接可往返。", routes:[["S:443", "路由器公网 :40001", "H:53000"]], stopped:"回复使用已有的出站 NAT 会话。", outcome:"H 收到 S 的回复。", tone:"success", invariant:"可收到已建立连接的回复，不等于任何陌生人都能新建连接到 H:7777。", state:{ mapping:outbound } },
+    { title:"4. 朋友尝试主动连入", event:"F:51000 → 203.0.113.8:7777；此时家用路由器没有对应的入站规则。", explanation:"路由器知道 40001 应交给 H:53000，却不能由此推断 7777 应交给 H:7777。朋友的连接请求没有送达 H；H 的防火墙还没有机会处理这个包。", routes:[["F:51000", "家用路由器公网 :7777", "H:7777"]], stopped:"停在家用路由器：本例的 7777 没有匹配的入站映射或转发规则。", outcome:"连接未送达 H。", tone:"fail", invariant:"出站映射与朋友要连入的公网端口是两回事。不同 NAT 对其他来源的策略也可能不同，不能靠猜测。", state:{ mapping:outbound } },
+    { title:"5. 给家用路由器添加端口转发", event:"手动设置 TCP 公网 :7777 → 192.168.1.10:7777。", explanation:"现在路由器获得一条明确的入站规则：收到发往公网 7777 的 TCP 包时交给 H。只是改配置，还没有证明整条路径已通。", routes:[["F:51000", "路由器公网 :7777", "H:7777"]], stopped:"配置已添加，等待朋友重新尝试。", outcome:"路由器这一关有了规则。", tone:"notice", invariant:"端口转发是主动配置的入站规则，不是刚才出站连接自动产生的规则。", state:{ mapping:outbound, forwarding:manual } },
+    { title:"6. 朋友重试，但 H 的防火墙阻止", event:"F 再次连公网 :7777；家用路由器转给 H，主机防火墙把包丢弃。", explanation:"包确实到达 H 所在设备，但还没交给监听 7777 的游戏程序。本例特意将防火墙设为阻止，以区分它与 NAT。", routes:[["F:51000", "家用路由器 :7777", "H 的防火墙", "游戏监听 :7777"]], stopped:"停在 H 的防火墙，而不是家用路由器。", outcome:"连接仍失败；失败位置改变了。", tone:"fail", invariant:"路由器肯转发，不代表操作系统防火墙也肯把包交给程序。", state:{ mapping:outbound, forwarding:manual } },
+    { title:"7. 放行防火墙，再重试", event:"H 允许 TCP 7777 的入站流量；朋友的 SYN 到达 H 的 TCP 栈。", explanation:"此时路由器入站转发和 H 的防火墙都放行。H 的操作系统先继续 TCP 握手；握手成功后，监听程序才能 Accept 这条连接。在这个单层 NAT 情境里，路由器也会为这条入站连接处理返回方向的地址改写。", routes:[["F:51000", "家用路由器 :7777", "H 的防火墙", "H 的 TCP 栈 :7777"]], stopped:"SYN 已到 H 的 TCP 栈；不是直接交给游戏的 ReadAsync。", outcome:"入站路径已打通，可以继续完成 TCP 握手。", tone:"success", invariant:"成功需要完整路径都能通：公网地址在家用路由器上、路由器转发、主机防火墙放行、应用监听。", state:{ mapping:outbound, forwarding:manual, firewall:"已允许外部 TCP 7777" } },
+    { title:"8. 换一种网络：运营商级 NAT（CGN）", event:"这是另一种拓扑，不是上一步的下一跳：家用路由器 WAN 变成 100.64.1.5。", explanation:"公网 203.0.113.8 现在属于运营商网关。即使家用路由器仍配置了 7777 转发，朋友先到的是运营商网关；它没有向这户家庭转发 7777，包到不了家用路由器。", routes:[["F:51000", "运营商公网 203.0.113.8:7777", "家用路由器 100.64.1.5:7777", "H:7777"]], stopped:"停在运营商网关：家里的端口转发管不到这一层。", outcome:"家中配置齐全，公网仍无法直接连入。", tone:"fail", invariant:"只配置自己控制的路由器，无法替运营商的 NAT 添加入站规则。", state:cgn },
+    { title:"9. 改走可达的中继", event:"H 和 F 各自主动连到中继 192.0.2.50:9000，中继转送应用消息。", explanation:"两边都走出站连接，不要求朋友主动穿过运营商网关连接 H:7777。中继需要保持各自连接，并知道该把哪位玩家的消息转给谁；它不是匹配服务器 S 自动兼任的角色。", routes:[["H", "家用路由器", "运营商网关", "中继 :9000"],["F", "中继 :9000"]], stopped:"两条出站路径汇聚到同一台可达中继，再由中继转送游戏消息。", outcome:"可绕开本例无法直连的入站路径，但多经过中继。", tone:"success", invariant:"中继靠双方主动建立的出站连接工作；它转发的是游戏应用消息，并不把 H 的私有地址变成公网地址。", state:cgn }
+  ];
+
+  let index = 0;
+  const fields = ["wan", "mapping", "forwarding", "listener", "firewall", "isp"];
+  function renderRoutes(paths) {
+    const target = document.getElementById("routes");
+    target.replaceChildren(...paths.map(path => {
+      const line = document.createElement("div");
+      line.className = "route";
+      path.forEach((label, i) => {
+        if (i > 0) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.setAttribute("aria-hidden", "true"); arrow.textContent = "→"; line.append(arrow); }
+        const hop = document.createElement("span"); hop.className = "hop"; hop.textContent = label; line.append(hop);
+      });
+      return line;
+    }));
+  }
+  function render() {
+    const step = steps[index];
+    document.getElementById("counter").textContent = `第 ${index + 1} / ${steps.length} 个状态`;
+    for (const key of ["title", "event", "explanation", "stopped", "invariant"]) document.getElementById(key).textContent = step[key];
+    for (const key of fields) document.getElementById(key).textContent = step.state[key] ?? base[key];
+    const outcome = document.getElementById("outcome"); outcome.textContent = step.outcome; outcome.className = `outcome ${step.tone}`;
+    renderRoutes(step.routes);
+    document.getElementById("previous").disabled = index === 0;
+    document.getElementById("next").disabled = index === steps.length - 1;
+  }
+  document.getElementById("previous").addEventListener("click", () => { if (index > 0) { index--; render(); } });
+  document.getElementById("next").addEventListener("click", () => { if (index < steps.length - 1) { index++; render(); } });
+  document.getElementById("reset").addEventListener("click", () => { index = 0; render(); });
+  render();
+</script>
+</body>
+</html>
