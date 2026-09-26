@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>连接、证书、账号与权限</title>
+<style>
+:root{color-scheme:light dark;--bg:#f6f4ee;--fg:#202b32;--panel:#ffffff;--line:#b6c5cb;--accent:#075c69}
+@media(prefers-color-scheme:dark){:root{--bg:#182027;--fg:#e6edf1;--panel:#212f38;--line:#667985;--accent:#8fdae4}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:17px/1.8 system-ui,"Microsoft YaHei",sans-serif}main{max-width:850px;margin:auto;padding:32px 20px}h1{font-size:1.7rem;line-height:1.5}a{color:var(--accent)}label{display:block}select,button{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:9px 14px}select{width:100%;margin:8px 0 18px}button:focus-visible,select:focus-visible{outline:3px solid var(--accent);outline-offset:3px}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}article{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;min-height:300px}h2{font-size:1.3rem;margin-top:0}pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit;border-left:4px solid var(--accent);padding:10px 14px;background:var(--bg)}nav{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.note{border-top:1px solid var(--line);padding-top:10px}#count{font-variant-numeric:tabular-nums}footer{margin-top:26px}@media(max-width:450px){main{padding:18px 12px}article{padding:14px;min-height:340px}h1{font-size:1.4rem}}
+</style></head>
+<body><main><p>计算机网络 · 配套推演</p><h1>连接、证书、账号与权限</h1><p>每条路径都从 TCP 建连开始。观察失败发生在哪一关，别把不同的成功混在一起。</p>
+<label for="scenario">情境</label><select id="scenario"><option value="0">证书名字不匹配</option><option value="1">加密通道正常，令牌过期</option><option value="2">C2 想控制 C1 的角色</option></select>
+<article aria-live="polite" aria-atomic="true"><p id="count"></p><h2 id="stage"></h2><pre id="state"></pre><p id="action"></p><p class="note" id="invariant"></p></article>
+<nav aria-label="推演控制"><button id="reset">重置</button><button id="prev">上一步</button><button id="next">下一步</button></nav>
+<footer><a href="31_TLS_加密身份与权限.md">返回正文（也可在 Obsidian 中打开同名文档）</a><p>这是有限情境的教学演示，不会连接真实服务器。到最后一步后可重置或选择其他情境。</p></footer>
+<noscript>此演示需要 JavaScript。完整解释已保存在同目录的 Markdown 正文中。</noscript></main>
+<script>
+"use strict";
+const scenarios = [{"name":"证书名字不匹配","states":[["TCP 成功","可交换传输字节","尚未确认对端是预期服务。","能连上不等于可信。"],["TLS 验证失败","证书名字与预期主机名不同","停止安全连接；核对主机名和证书配置。","不要靠关闭证书验证来放行。"]]},{"name":"加密通道正常，令牌过期","states":[["TCP 成功","传输可用","接下来完成安全握手。","这里还没有证明玩家身份。"],["TLS 验证成功","预期服务身份已验证；通道受保护","发送应用认证凭据。","服务端身份与玩家账号不同。"],["应用身份验证失败","token 已过期；示例返回 HTTP 401","按登录流程重新取得有效凭据。","关闭证书验证不能修复过期 token。"]]},{"name":"C2 想控制 C1 的角色","states":[["TCP 成功","传输可用","开始 TLS 握手。","下一层的结论还未知。"],["TLS 验证成功","受保护通道建立","应用提交凭据和操作。","加密请求也可能不合法。"],["登录凭据有效","可信会话账号 = C2","查询被操作对象的权限归属。","正文声称的 playerId 不能取代可信身份。"],["授权拒绝","对象 owner = C1；请求者 = C2","示例返回拒绝结果，不修改对象。","登录成功不等于可以控制所有对象。"]]}];
+let scenarioIndex = 0;
+let stepIndex = 0;
+const ids = ["scenario","count","stage","state","action","invariant","reset","prev","next"];
+const elements = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+function render() {
+  const states = scenarios[scenarioIndex].states;
+  const state = states[stepIndex];
+  elements.count.textContent = "步骤 " + (stepIndex + 1) + " / " + states.length;
+  elements.stage.textContent = state[0];
+  elements.state.textContent = state[1];
+  elements.action.textContent = "发生的事：" + state[2];
+  elements.invariant.textContent = "应保持的判断：" + state[3];
+  elements.prev.disabled = stepIndex === 0;
+  elements.next.disabled = stepIndex === states.length - 1;
+}
+elements.scenario.addEventListener("change", () => { scenarioIndex = Number(elements.scenario.value); stepIndex = 0; render(); });
+elements.reset.addEventListener("click", () => { stepIndex = 0; render(); });
+elements.prev.addEventListener("click", () => { stepIndex = Math.max(0, stepIndex - 1); render(); });
+elements.next.addEventListener("click", () => { stepIndex = Math.min(scenarios[scenarioIndex].states.length - 1, stepIndex + 1); render(); });
+render();
+</script></body></html>
